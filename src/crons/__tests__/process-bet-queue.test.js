@@ -1,0 +1,566 @@
+import Chance from "chance";
+import { stub, stubMongoose } from "jest-micro-auto-stub";
+import { cloneDeep } from "lodash";
+import mongoose from "mongoose";
+import logger from "sc-common/logger";
+import { GameDefinition } from "sc-game-base/src/core";
+import BaseMetrics from "sc-game-base/src/core/base-metrics";
+import { PlaceBetPublisher } from "sc-game-base/src/core/event-publishers";
+import { ProvablyFairConsumer } from "sc-game-base/src/core/event-consumers";
+import { Actions } from "../../constants";
+import { SettleCashOutConsumer } from "../../consumers";
+import CrashGameData from "../../game-data";
+import { calculateMultiplier } from "../../helpers/crash-point-helper";
+import noticeHelper from "../../helpers/notice-helper";
+import ProcessBetQueue from "../process-bet-queue";
+
+const chance = new Chance();
+
+jest.mock("../../helpers/crash-point-helper", () => ({
+    calculateMultiplier: jest.fn(),
+}));
+
+describe("ProcessBetQueue", () => {
+    jest.mock("sc-game-base/src/core/event-publishers");
+    const roundId = chance.natural();
+    const gameData = new CrashGameData(10);
+    gameData.exchangeRates = {
+        exId: 1,
+        code: {
+            USD: 1,
+            VND: 0.00004405,
+            IDR: 0.07099,
+        },
+    };
+
+    gameData.startTime = new Date();
+
+    gameData.gameConfigs = {
+        crashConfig: {},
+    };
+
+    gameData.currencies = [
+        { code: "USD", name: "USD", isTest: false, isUncountOnTotal: false },
+        { code: "IND", name: "IND", isTest: true, isUncountOnTotal: false },
+        { code: "VND", name: "UUS", isTest: true, isUncountOnTotal: true },
+    ];
+
+    const definition = new GameDefinition({
+        id: 1,
+        name: "game name",
+        durations: {
+            wholeRound: 36,
+            placingBets: 30,
+            lockingBet: 5,
+            shakeThePlateDuration: 1,
+        },
+        choicesMapper: { red2: 1 },
+    });
+    const placeBetPublisher = stub(PlaceBetPublisher);
+    const settleCashOutConsumer = stub(SettleCashOutConsumer);
+    const provablyFairConsumer = stub(ProvablyFairConsumer);
+    /** @type {logger}*/
+    const logService = stub(logger);
+    /** @type {mongoose.Model}*/
+    const betsRepository = {
+        create: jest.fn(),
+        findOne: jest.fn().mockReturnValue({ lean: jest.fn().mockReturnValue({ exec: jest.fn() }) }),
+    };
+    /** @type {mongoose.Model}*/
+    const betLogsRepository = {
+        find: jest.fn().mockReturnValue({ lean: jest.fn().mockReturnValue({ exec: jest.fn() }) }),
+        create: jest.fn(),
+        findOne: jest.fn().mockReturnValue({ lean: jest.fn().mockReturnValue({ exec: jest.fn() }) }),
+    };
+
+    /** @type {mongoose.Model}*/
+    const userInfosRepository = stubMongoose(mongoose.Model);
+    userInfosRepository.updateOne = jest.fn();
+
+    const baseMetrics = stub(BaseMetrics);
+    let player = null,
+        proceedBetQueue = null,
+        placeBet = null;
+
+    const payload = {
+        freeBet: chance.bool(),
+        amount: chance.natural(),
+        action: chance.pickone(Object.values(Actions)),
+        roundId: gameData.roundId,
+        receivedTime: new Date(),
+        time: new Date(),
+        clientSeed: "9000",
+    };
+    beforeEach(() => {
+        const playerInGameData = {
+            name: "player01",
+            betTracks: { red2: 100 },
+            betQueue: [
+                {
+                    player: {},
+                    payload: {},
+                },
+            ],
+        };
+        player = mockPlayer();
+        placeBet = jest.fn();
+        proceedBetQueue = initBetQueue(placeBet);
+
+        gameData.ingame = {
+            player01: cloneDeep(playerInGameData),
+        };
+    });
+
+    afterEach(() => {
+        jest.clearAllMocks();
+        jest.restoreAllMocks();
+    });
+
+    describe("dequeueBets", () => {
+        beforeEach(() => {
+            proceedBetQueue.proceedActions = jest.fn();
+        });
+
+        describe("when gameData.inGame is undefined", () => {
+            it("should not call proceedActions", () => {
+                // Arrange
+                gameData.ingame = undefined;
+
+                // Act
+                proceedBetQueue.dequeueBets();
+
+                // Assert
+                expect(proceedBetQueue.proceedActions).not.toBeCalled();
+            });
+        });
+
+        describe("when gameData.inGame is empty", () => {
+            it("should not call proceedActions", () => {
+                // Arrange
+                gameData.ingame = {};
+
+                // Act
+                proceedBetQueue.dequeueBets();
+
+                // Assert
+                expect(proceedBetQueue.proceedActions).not.toBeCalled();
+            });
+        });
+
+        describe("when gameData.inGame is not empty", () => {
+            describe("when playerInGame.betProcessing is true", () => {
+                it("should not call proceedActions", () => {
+                    // Arrange
+                    gameData.ingame.player01.betProcessing = true;
+
+                    // Act
+                    proceedBetQueue.dequeueBets();
+
+                    // Assert
+                    expect(proceedBetQueue.proceedActions).not.toBeCalled();
+                });
+            });
+
+            describe("when playerInGame.betQueue is undefined", () => {
+                it("should not call proceedActions", () => {
+                    // Arrange
+                    gameData.ingame.player01.betQueue = undefined;
+
+                    // Act
+                    proceedBetQueue.dequeueBets();
+
+                    // Assert
+                    expect(proceedBetQueue.proceedActions).not.toBeCalled();
+                });
+            });
+
+            describe("when playerInGame.betQueue is empty", () => {
+                it("should not call proceedActions", () => {
+                    // Arrange
+                    gameData.ingame.player01.betQueue = [];
+
+                    // Act
+                    proceedBetQueue.dequeueBets();
+
+                    // Assert
+                    expect(proceedBetQueue.proceedActions).not.toBeCalled();
+                });
+            });
+
+            describe("when playerInGame.betProcessing is false and betQueue is not empty", () => {
+                it("should call proceedActions", () => {
+                    // Arrange
+                    proceedBetQueue.proceedActions = jest.fn().mockResolvedValueOnce({});
+
+                    // Act
+                    proceedBetQueue.dequeueBets();
+
+                    // Assert
+                    expect(proceedBetQueue.proceedActions).toBeCalledWith({}, {});
+                });
+
+                it("should update playerInGame.processingBet to true", () => {
+                    // Arrange
+                    proceedBetQueue.proceedActions = jest.fn().mockResolvedValueOnce({});
+
+                    // Act
+                    proceedBetQueue.dequeueBets();
+
+                    // Assert
+                    expect(gameData.ingame.player01.betProcessing).toBeTruthy();
+                });
+            });
+        });
+    });
+
+    describe("proceedActions", () => {
+        beforeEach(() => {
+            proceedBetQueue.proceedBet = jest.fn();
+            proceedBetQueue.proceedCashOut = jest.fn();
+            proceedBetQueue.proceedHalfCashOut = jest.fn();
+            betLogsRepository.find().lean().exec.mockResolvedValueOnce([]);
+        });
+
+        describe("when action is bet", () => {
+            it("should call proceedBet", async () => {
+                // Arrange
+                const betPayload = { ...payload, action: Actions.Bet };
+
+                // Act
+                await proceedBetQueue.proceedActions(player, betPayload);
+
+                // Assert
+                expect(proceedBetQueue.proceedBet).toBeCalledWith(player, betPayload);
+            });
+        });
+
+        describe("when action is cashOut", () => {
+            it("should call proceedCashOut", async () => {
+                // Arrange
+                const cashOutPayload = { ...payload, action: Actions.CashOut };
+
+                // Act
+                await proceedBetQueue.proceedActions(player, cashOutPayload);
+
+                // Assert
+                expect(proceedBetQueue.proceedCashOut).toBeCalledWith(player, cashOutPayload);
+            });
+        });
+
+        describe("when action is halfCashOut", () => {
+            it("should call halfCashOut", async () => {
+                // Arrange
+                const cashOutPayload = { ...payload, action: Actions.HalfCashOut };
+
+                // Act
+                await proceedBetQueue.proceedActions(player, cashOutPayload);
+
+                // Assert
+                expect(proceedBetQueue.proceedHalfCashOut).toBeCalledWith(player, cashOutPayload);
+            });
+        });
+    });
+
+    describe("proceedCashOut", () => {
+        beforeEach(() => {
+            betLogsRepository.find().lean().exec.mockReturnValueOnce([]);
+        });
+
+        it("should find current round bet", async () => {
+            // Act
+            await proceedBetQueue.proceedCashOut(player, payload);
+
+            // Assert
+            expect(betsRepository.findOne).toBeCalledWith({ uid: player.UID, roundId: gameData.roundId, freeBet: payload.freeBet });
+        });
+
+        describe("when NOT exist bet", () => {
+            it("should publishGameFailedBet", async () => {
+                // Act
+                await proceedBetQueue.proceedCashOut(player, payload);
+
+                // Assert
+                expect(proceedBetQueue.placeBetPublisher.publishGameFailedBet).toBeCalledWith(player.UID, {
+                    endBet: -1,
+                    notice: { errorCode: noticeHelper.invalidCashOut },
+                });
+            });
+        });
+
+        describe("when existing bet", () => {
+            const bet = { receivedTime: new Date(), amount: chance.natural() };
+            const multiplier = chance.floating({ min: 2, max: 100 });
+
+            beforeEach(() => {
+                betsRepository.findOne().lean().exec.mockResolvedValueOnce(bet);
+                calculateMultiplier.mockReturnValueOnce(multiplier);
+                proceedBetQueue.isCashOutHalfAmount = jest.fn();
+                proceedBetQueue.publishCashOutFailed = jest.fn();
+                proceedBetQueue.getMaxWinPerRound = jest.fn();
+            });
+
+            it("should call calculateMultiplier", async () => {
+                // Act
+                gameData.betList[player.UID] = {};
+                await proceedBetQueue.proceedCashOut(player, payload);
+
+                // Assert
+                expect(calculateMultiplier).toBeCalledWith(expect.any(Number));
+            });
+
+            describe("when multiplier = result", () => {
+                it("should call publishCashOutFailed", async () => {
+                    // Arrange
+                    gameData.result = multiplier;
+
+                    // Act
+                    await proceedBetQueue.proceedCashOut(player, payload);
+
+                    // Assert
+                    expect(proceedBetQueue.publishCashOutFailed).toBeCalledWith(player);
+                });
+            });
+
+            describe("when multiplier > result", () => {
+                it("should publishGameFailedBet", async () => {
+                    // Arrange
+                    gameData.result = chance.floating({ min: 1, max: multiplier });
+
+                    // Act
+                    await proceedBetQueue.proceedCashOut(player, payload);
+
+                    // Assert
+                    expect(proceedBetQueue.publishCashOutFailed).toBeCalledWith(player);
+                });
+            });
+
+            describe("when gameData.roundId NOT match bet.roundId", () => {
+                it("should publishGameFailedBet", async () => {
+                    // Arrange
+                    gameData.result = chance.floating({ min: multiplier });
+                    bet.roundId = gameData.roundId - 1;
+
+                    // Act
+                    await proceedBetQueue.proceedCashOut(player, payload);
+
+                    // Assert
+                    expect(proceedBetQueue.publishCashOutFailed).toBeCalledWith(player);
+                });
+            });
+
+            describe("when cashOut request is valid", () => {
+                beforeEach(() => {
+                    gameData.result = chance.floating({ min: multiplier });
+                    proceedBetQueue.settleCashOut = jest.fn();
+                    bet.roundId = gameData.roundId;
+                });
+
+                it("should NOT publishGameFailed", async () => {
+                    // Act
+                    await proceedBetQueue.proceedCashOut(player, bet);
+
+                    // Assert
+                    expect(proceedBetQueue.publishCashOutFailed).not.toBeCalled();
+                });
+
+                describe("when action is Cash Out", () => {
+                    describe("when NOT exist halfCashOut bet logs", () => {
+                        it("should call settleCashOut with bet amount", async () => {
+                            // Act
+                            await proceedBetQueue.proceedCashOut(player, { ...payload, action: Actions.CashOut });
+
+                            // Assert
+                            expect(settleCashOutConsumer.settleCashOut).toBeCalledWith(
+                                player,
+                                { ...payload, action: Actions.CashOut },
+                                bet.amount,
+                                multiplier,
+                                undefined
+                            );
+                        });
+                    });
+
+                    describe("when exist halfCashOut bet logs", () => {
+                        const betLog = { winAmount: chance.natural(), amount: bet.amount / 2, action: Actions.HalfCashOut };
+
+                        beforeEach(() => {
+                            proceedBetQueue.getCashOutBet = jest.fn().mockResolvedValueOnce({ multiplier, bet, betLogs: [betLog] });
+                        });
+
+                        it("should call settleCashOut with half of bet amount and current win amount", async () => {
+                            // Arrange
+                            const expectAmount = bet.amount / 2;
+
+                            // Act
+                            await proceedBetQueue.proceedCashOut(player, { ...payload, action: Actions.CashOut });
+
+                            // Assert
+                            expect(settleCashOutConsumer.settleCashOut).toBeCalledWith(
+                                player,
+                                { ...payload, action: Actions.CashOut },
+                                expectAmount,
+                                multiplier,
+                                betLog.winAmount
+                            );
+                        });
+                    });
+                });
+            });
+        });
+    });
+
+    describe("handleSuccessBet", () => {
+        const player = {
+                session: chance.guid(),
+                profile: {
+                    minBet: chance.natural(),
+                    maxBet: chance.natural(),
+                    name: "player",
+                },
+            },
+            balance = {
+                minBet: chance.natural(),
+                maxBet: chance.natural(),
+            },
+            roundId = chance.natural(),
+            rate = chance.floating({ min: 1 });
+
+        beforeEach(() => {
+            proceedBetQueue.calculateCurrencyRate = jest.fn().mockReturnValueOnce(rate);
+            proceedBetQueue.insertBet = jest.fn();
+            proceedBetQueue.notifyPlacingBetResult = jest.fn();
+            proceedBetQueue.updateUserStakeLevel = jest.fn();
+        });
+
+        it("should call calculateCurrencyRate", async () => {
+            // Act
+            await proceedBetQueue.handleSuccessBet(player, balance, roundId, payload);
+
+            // Assert
+            expect(proceedBetQueue.calculateCurrencyRate).toBeCalledWith(player.session);
+        });
+
+        it("should call insertBet", async () => {
+            // Act
+            await proceedBetQueue.handleSuccessBet(player, balance, roundId, payload);
+
+            // Assert
+            expect(proceedBetQueue.insertBet).toBeCalledWith(player, roundId, payload, rate);
+        });
+
+        it("should call notifyPlacingBetResult", async () => {
+            // Act
+            await proceedBetQueue.handleSuccessBet(player, balance, roundId, payload);
+
+            // Assert
+            expect(proceedBetQueue.notifyPlacingBetResult).toBeCalledWith(player, balance, payload, rate);
+        });
+
+        describe("when bet is free bet", () => {
+            it("should not call updateUserStakeLevel", async () => {
+                // Act
+                await proceedBetQueue.handleSuccessBet(player, balance, roundId, { ...payload, freeBet: true });
+
+                // Assert
+                expect(proceedBetQueue.updateUserStakeLevel).not.toBeCalled();
+            });
+        });
+
+        describe("when bet is not free bet and user stake level is not updated", () => {
+            it("should not call updateUserStakeLevel", async () => {
+                // Arrange
+                const res = {
+                    minBet: player.profile.minBet,
+                    maxBet: player.profile.maxBet,
+                };
+
+                // Act
+                await proceedBetQueue.handleSuccessBet(player, res, roundId, { ...payload, freeBet: false });
+
+                // Assert
+                expect(proceedBetQueue.updateUserStakeLevel).not.toBeCalled();
+            });
+        });
+
+        describe("when bet is not free bet and user stake level is updated", () => {
+            it("should call updateUserStakeLevel", async () => {
+                // Act
+                await proceedBetQueue.handleSuccessBet(player, balance, roundId, { ...payload, freeBet: false });
+
+                // Assert
+                expect(proceedBetQueue.updateUserStakeLevel).toBeCalledWith(player, balance.minBet, balance.maxBet);
+            });
+        });
+    });
+
+    describe("insertBet", () => {
+        const mockDate = new Date();
+
+        beforeEach(() => {
+            jest.spyOn(global, "Date").mockImplementation(() => mockDate);
+        });
+
+        it("should call betsRepository.create", async () => {
+            // Arrange
+            const rate = chance.floating({ min: 1 });
+
+            const expectResult = {
+                uid: player.UID,
+                name: player.profile.name,
+                time: mockDate,
+                freeBet: payload.freeBet,
+                roundId,
+                amount: payload.amount,
+                siteId: player.session.siteId,
+                currency: player.session.currencyName,
+                rate: rate,
+                operatorId: player.session.operatorId,
+                playerId: player.session.playerId,
+                clientSeed: payload.clientSeed,
+                autoCashOut: payload.autoCashOut,
+                totalAmount: payload.amount,
+            };
+
+            // Act
+            await proceedBetQueue.insertBet(player, roundId, payload, rate);
+
+            // Assert
+            expect(proceedBetQueue.betsRepository.create).toBeCalledWith(expectResult);
+        });
+    });
+
+    const initBetQueue = (placeBet) => {
+        return new ProcessBetQueue({
+            definition,
+            gameData,
+            placeBetPublisher,
+            placeBet,
+            logService,
+            betsRepository,
+            betLogsRepository,
+            userInfosRepository,
+            baseMetrics,
+            settleCashOutConsumer,
+            provablyFairConsumer,
+        });
+    };
+
+    const mockPlayer = () => {
+        return {
+            UID: 1,
+            profile: { name: "player01", minBet: 1, maxBet: 5000 },
+            session: {
+                userId: 1,
+                playerId: 1,
+                siteId: "123456",
+                currencyCode: "USD",
+                currencyName: "USD",
+                multiplier: 1000,
+                currencyGroupId: chance.guid(),
+            },
+            socketClient: {
+                emit: jest.fn(),
+            },
+        };
+    };
+});

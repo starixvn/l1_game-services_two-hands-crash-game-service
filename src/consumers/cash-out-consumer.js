@@ -1,0 +1,99 @@
+import { BaseEventConsumers } from "sc-game-base/src/core";
+import { Actions, MaxDeltaTime } from "../constants";
+import noticeHelper from "../helpers/notice-helper";
+
+export class CashOutConsumer extends BaseEventConsumers.PlaceBetConsumer {
+    consume(player, payload) {
+        Object.assign(payload, {
+            roundId: payload.roundId ?? this.gameData.roundId,
+            m: payload.multiplier,
+            clientSendTime: payload.clientSendTime,
+            mode: payload.m ?? this.DisplayMode.Landscape,
+            receivedTime: new Date(),
+            action: payload.halfCashOut ? Actions.HalfCashOut : Actions.CashOut,
+        });
+
+        const { roundId, clientSendTime, receivedTime, betKey } = payload;
+        const name = player.profile.name;
+
+        if (!this.validateRequest(player, roundId, clientSendTime, receivedTime, betKey)) {
+            return;
+        }
+
+        this.adjustBetTracks(player.profile.name, payload);
+
+        this.gameData.ingame[name].betQueue.push({ player, payload });
+    }
+
+    validateRequest(player, roundId, clientSendTime, receivedTime, betKey) {
+        const criteria = this.composeValidationCriteria(roundId, player, clientSendTime, receivedTime, betKey);
+        const failedCriterion = criteria.find((criterion) => criterion.failure);
+
+        if (failedCriterion) {
+            this.publisher.publishToUser(player.UID, { endBet: -1, betKey, notice: failedCriterion.notice });
+
+            return false;
+        }
+
+        return true;
+    }
+
+    composeValidationCriteria(roundId, player, clientSendTime, receivedTime, betKey) {
+        const name = player.profile.name;
+        const betTracks = this.gameData.ingame?.[name]?.betTracks;
+
+        const bettingTimeValidationCriteria = this.composeBettingTimeValidationCriteria(roundId, clientSendTime, receivedTime);
+        const betTrackValidationCriteria = this.composeBetTrackValidationCriteria(betTracks, betKey);
+
+        return bettingTimeValidationCriteria.concat(betTrackValidationCriteria);
+    }
+
+    composeBetTrackValidationCriteria(betTracks, betKey) {
+        return [
+            {
+                failure: !betTracks?.[betKey]?.[Actions.Bet]?.time,
+                notice: this.getNoticeObj(noticeHelper.invalidCashOut),
+            },
+            {
+                failure: !!betTracks?.[betKey]?.[Actions.CashOut]?.time,
+                notice: this.getNoticeObj(noticeHelper.invalidCashOut),
+            },
+        ];
+    }
+
+    composeBettingTimeValidationCriteria(roundId, clientSendTime, receivedTime) {
+        const configs = this.gameData.gameConfigs;
+        const deltaTime = receivedTime - clientSendTime;
+
+        return [
+            {
+                failure: !configs.enabled,
+                notice: this.getNoticeObj(noticeHelper.invalidCashOut),
+            },
+            {
+                failure: roundId !== this.gameData.roundId,
+                notice: this.getNoticeObj(noticeHelper.invalidCashOut, { gameRoundId: roundId }),
+            },
+            {
+                failure: this.gameData.remainingTime > this.definition.durations.liveTime,
+                notice: this.getNoticeObj(noticeHelper.invalidCashOut),
+            },
+            {
+                failure: Math.abs(deltaTime) > MaxDeltaTime,
+                notice: this.getNoticeObj(noticeHelper.invalidCashOut),
+            },
+        ];
+    }
+
+    adjustBetTracks(playerName, bet) {
+        const { receivedTime, action, betKey } = bet;
+
+        if (this.gameData.ingame?.[playerName]) {
+            const playerInGame = this.gameData.ingame[playerName];
+
+            playerInGame.betTracks[betKey][action] = {
+                time: receivedTime,
+            };
+        }
+    }
+}
