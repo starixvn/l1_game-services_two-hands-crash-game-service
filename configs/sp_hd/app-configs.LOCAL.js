@@ -22,7 +22,7 @@ export default {
         audiences: ["api", "admin-api"],
     },
     userServiceSettings: {
-        url: "http://l1-user-service-local-service:5000",
+        url: "http://sp-hd-user-service-local-service:5000",
     },
     socketOptions: {
         pingInterval: 60 * 1000,
@@ -33,7 +33,7 @@ export default {
     },
     enabledLogs: true,
     database: {
-        url: "mongodb://hotdog_backend:HotdogBackend@10.10.50.12:39400,10.10.50.13:39100,10.10.50.14:39400/?replicaSet=SPLocal0&appName=crashgame",
+        url: "mongodb://hotdog_backend:HotdogBackend@10.10.50.12:39400,10.10.50.13:39400,10.10.50.14:39400/?replicaSet=SPLocal0&appName=crashgame",
         options: {
             dbName: "hotdog_minigame",
             useNewUrlParser: true,
