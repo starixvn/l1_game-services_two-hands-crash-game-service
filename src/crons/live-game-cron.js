@@ -1,5 +1,7 @@
+import { SettleCashOutConsumer } from "../consumers";
 import LiveGamePublisher from "../event-publishers/live-game-publisher";
 import { calculateMultiplier } from "../helpers/crash-point-helper";
+import Bot from "./bot";
 
 export default class LiveGameCron {
     /**
@@ -7,11 +9,14 @@ export default class LiveGameCron {
      * @param {logger} dependencies.logService
      */
     constructor({ liveGamePublisher, logService, gameData, liveGameLogsRepository, settleCashOutConsumer, bot }) {
+        /** @type {LiveGamePublisher} */
         this.liveGamePublisher = liveGamePublisher;
         this.logService = logService;
         this.gameData = gameData;
         this.liveGameLogsRepository = liveGameLogsRepository;
+        /** @type {SettleCashOutConsumer} */
         this.settleCashOutConsumer = settleCashOutConsumer;
+        /** @type {Bot} */
         this.bot = bot;
     }
 

@@ -1,8 +1,8 @@
 import { stub, stubMongoose } from "jest-micro-auto-stub";
 import mongoose from "mongoose";
+import { ProvablyFairConsumer } from "sc-game-base/src/core/event-consumers";
 import { BaseEventPublisher } from "sc-game-base/src/core/event-publishers";
 import { TableGameDefinition } from "sc-game-base/src/table";
-import { ProvablyFairConsumer } from "sc-game-base/src/core/event-consumers";
 import CrashGameData from "../../game-data";
 import gameSettings from "../../game-settings";
 import { calculateMultiplier } from "../../helpers/crash-point-helper";
@@ -158,8 +158,8 @@ describe("placeBet", () => {
 
             await bot.placeBet({ id: 1, totalBet: 0 });
 
-            expect(userInfosRepository.findOneAndUpdate).not.toBeCalled();
-            expect(tempBetsRepository.create).not.toBeCalled();
+            expect(userInfosRepository.findOneAndUpdate).not.toHaveBeenCalled();
+            expect(tempBetsRepository.create).not.toHaveBeenCalled();
         });
     });
 
@@ -175,8 +175,8 @@ describe("placeBet", () => {
         await bot.placeBet(selectedBot);
 
         //Assert
-        expect(userInfosRepository.findOneAndUpdate).toBeCalled();
-        expect(tempBetsRepository.create).toBeCalled();
+        expect(userInfosRepository.findOneAndUpdate).toHaveBeenCalled();
+        expect(tempBetsRepository.create).toHaveBeenCalled();
     });
 });
 
@@ -189,8 +189,16 @@ describe("cashOut", () => {
             bot.gameData.result = 100;
             bot.gameData.remainingTime = -4;
             gameData.betList = {
-                1: {},
-                2: {},
+                1: {
+                    0: {
+                        action: "bet",
+                    },
+                },
+                2: {
+                    0: {
+                        action: "bet",
+                    },
+                },
             };
 
             bot.botsInRoom = {
@@ -208,7 +216,7 @@ describe("cashOut", () => {
 
             //Assert
             expect(tempBetLogsRepository.create).toHaveBeenCalled();
-            expect(bot.botsInRoom[1].halfCashOut || bot.botsInRoom[1].cashOut).toEqual(true);
+            expect(bot.botsInRoom[1].cashOut).toEqual(true);
         });
 
         it("should call publisher.publishToAllUsersExceptSystem", async () => {
@@ -218,8 +226,16 @@ describe("cashOut", () => {
             bot.gameData.result = 100;
             bot.gameData.remainingTime = -4;
             gameData.betList = {
-                1: {},
-                2: {},
+                1: {
+                    0: {
+                        action: "bet",
+                    },
+                },
+                2: {
+                    0: {
+                        action: "bet",
+                    },
+                },
             };
 
             bot.botsInRoom = {

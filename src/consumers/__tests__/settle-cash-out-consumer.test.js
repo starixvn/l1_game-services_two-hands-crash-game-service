@@ -1,11 +1,11 @@
-import mongoose from "mongoose";
-import { stub, stubMongoose } from "jest-micro-auto-stub";
-import GameData from "../../game-data";
-import PlaceBetPublisher from "../../event-publishers/place-bet-publisher";
-import { SettleCashOutConsumer } from "../settle-cash-out-consumer";
-import { Actions, MinMultiplierValue } from "../../constants";
 import Chance from "chance";
+import { stub, stubMongoose } from "jest-micro-auto-stub";
+import mongoose from "mongoose";
+import { Actions } from "../../constants";
+import PlaceBetPublisher from "../../event-publishers/place-bet-publisher";
+import GameData from "../../game-data";
 import { roundFloat } from "../../helpers/number-helper";
+import { SettleCashOutConsumer } from "../settle-cash-out-consumer";
 
 const chance = new Chance();
 
@@ -17,7 +17,7 @@ describe("SettleCashOutConsumer", () => {
     const gameData = new GameData();
     gameData.updatePlayerAction = jest.fn();
     gameData.gameConfigs.crashConfig = {};
-    gameData.result = 100;
+    gameData.result = 1000;
 
     const placeBetPublisher = stub(PlaceBetPublisher);
     const logService = {
@@ -25,6 +25,9 @@ describe("SettleCashOutConsumer", () => {
     };
     const betLogsRepository = stubMongoose(mongoose.Model);
 
+    /**
+     * @type {SettleCashOutConsumer}
+     */
     let consumer;
 
     beforeEach(() => {
@@ -56,69 +59,11 @@ describe("SettleCashOutConsumer", () => {
         },
     };
 
-    describe("proceedAutoCashOut", () => {
-        beforeEach(() => {
-            consumer.settleCashOut = jest.fn();
-        });
-
-        describe("when exist valid autoCashOut value on bet", () => {
-            it("should call settleCashOut", async () => {
-                // Arrange
-                const mockReceivedTime = new Date();
-                const autoCashOut = MinMultiplierValue;
-                const amount = 100;
-                const multiplier = autoCashOut + 0.1;
-                const betQueuePushMock = jest.fn();
-                jest.spyOn(global, "Date").mockImplementation(() => mockReceivedTime);
-                gameData.betList = {
-                    [UID]: {
-                        [Actions.HalfCashOut]: {
-                            win: 1.1,
-                        },
-                    },
-                };
-
-                const expectedPayload = {
-                    roundId: gameData.roundId,
-                    receivedTime: mockReceivedTime,
-                    action: Actions.CashOut,
-                };
-
-                gameData.ingame = {
-                    [playerName]: {
-                        UID,
-                        betTracks: {
-                            [Actions.Bet]: {
-                                autoCashOut,
-                                amount,
-                            },
-                            [Actions.HalfCashOut]: {
-                                amount: amount / 2,
-                                win: 1.1,
-                            },
-                        },
-                        betQueue: {
-                            push: betQueuePushMock,
-                        },
-                        playerData: realPlayer,
-                    },
-                };
-
-                // Act
-                await consumer.proceedAutoCashOut(multiplier);
-
-                // Assert
-                expect(consumer.settleCashOut).toBeCalledWith(realPlayer, expectedPayload, amount / 2, autoCashOut, 1.1);
-            });
-        });
-    });
-
     describe("settleCashOut", () => {
-        const payload = { roundId: chance.natural(), action: chance.pickone(Object.values(Actions)) };
+        const payload = { roundId: chance.natural(), action: chance.pickone(Object.values(Actions)), betKey: 1 };
         const amount = chance.natural({ min: 1, max: 100 });
-        const multiplier = chance.floating({ min: 1, max: 2000 });
+        const multiplier = chance.floating({ min: 1, max: 999 });
         const maxWinPerRound = 200000;
-        const halfCashOutWinAmount = chance.floating({ min: 1.01, max: 10000 });
         const winAmount = roundFloat(multiplier * amount);
         const reachMaxWin = winAmount === maxWinPerRound;
         const currencyRate = chance.floating({ min: 0.1, max: 1000 });
@@ -131,10 +76,10 @@ describe("SettleCashOutConsumer", () => {
 
         it("should call getMaxWinPerRound", async () => {
             // Act
-            await consumer.settleCashOut(realPlayer, payload, amount, multiplier, halfCashOutWinAmount);
+            await consumer.settleCashOut(realPlayer, payload, amount, multiplier);
 
             // Assert
-            expect(consumer.getMaxWinPerRound).toBeCalledWith(realPlayer);
+            expect(consumer.getMaxWinPerRound).toHaveBeenCalledWith(realPlayer);
         });
 
         it("should call insertBetLog", async () => {
@@ -142,23 +87,30 @@ describe("SettleCashOutConsumer", () => {
             const expectBetLog = { ...payload, winAmount, multiplier, amount, reachMaxWin };
 
             // Act
-            await consumer.settleCashOut(realPlayer, payload, amount, multiplier, halfCashOutWinAmount);
+            await consumer.settleCashOut(realPlayer, payload, amount, multiplier);
 
             // Assert
-            expect(consumer.insertBetLog).toBeCalledWith(realPlayer, payload.roundId, expectBetLog);
+            expect(consumer.insertBetLog).toHaveBeenCalledWith(realPlayer, payload.roundId, expectBetLog);
         });
 
         it("should call placeBetPublisher.publishSuccessCashOut", async () => {
             // Act
-            await consumer.settleCashOut(realPlayer, payload, amount, multiplier, halfCashOutWinAmount);
+            await consumer.settleCashOut(realPlayer, payload, amount, multiplier);
 
             // Assert
-            expect(placeBetPublisher.publishSuccessCashOut).toBeCalledWith(
+            expect(placeBetPublisher.publishSuccessCashOut).toHaveBeenCalledWith(
                 realPlayer.UID,
                 {
                     name: realPlayer.profile.name,
                     playerId: realPlayer.UID,
-                    [payload.action]: { amount, win: winAmount, multiplier, reachMaxWin: false, cashOutWin: winAmount },
+                    [payload.action]: {
+                        amount,
+                        win: winAmount,
+                        multiplier,
+                        reachMaxWin: false,
+                        cashOutWin: winAmount,
+                        betKey: payload.betKey,
+                    },
                 },
                 currencyRate
             );
@@ -166,10 +118,10 @@ describe("SettleCashOutConsumer", () => {
 
         it("should call gameData.updatePlayerAction", async () => {
             // Act
-            await consumer.settleCashOut(realPlayer, payload, amount, multiplier, halfCashOutWinAmount);
+            await consumer.settleCashOut(realPlayer, payload, amount, multiplier);
 
             // Assert
-            expect(gameData.updatePlayerAction).toBeCalledWith(realPlayer.UID, payload.action, {
+            expect(gameData.updatePlayerAction).toHaveBeenCalledWith(realPlayer.UID, payload.action, payload.betKey, {
                 amount,
                 win: winAmount,
                 multiplier,
@@ -209,7 +161,7 @@ describe("SettleCashOutConsumer", () => {
             await consumer.insertBetLog(realPlayer, roundId, payload);
 
             // Assert
-            expect(consumer.calculateCurrencyRate).toBeCalledWith(realPlayer.session);
+            expect(consumer.calculateCurrencyRate).toHaveBeenCalledWith(realPlayer.session);
         });
 
         it("should call betLogsRepository.create", async () => {
@@ -223,7 +175,7 @@ describe("SettleCashOutConsumer", () => {
             await consumer.insertBetLog(realPlayer, roundId, payload);
 
             // Assert
-            expect(betLogsRepository.create).toBeCalledWith({
+            expect(betLogsRepository.create).toHaveBeenCalledWith({
                 uid: realPlayer.UID,
                 name: realPlayer.profile.name,
                 time: mockDate,
@@ -244,4 +196,5 @@ describe("SettleCashOutConsumer", () => {
             });
         });
     });
+    
 });

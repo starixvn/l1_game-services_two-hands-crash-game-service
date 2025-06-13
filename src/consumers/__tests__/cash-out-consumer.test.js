@@ -1,11 +1,11 @@
-import { Core } from "sc-game-base";
-import { BaseEventPublisher } from "sc-game-base/src/core/event-publishers";
-import { CashOutConsumer } from "../cash-out-consumer";
-import gameSettings from "../../../src/game-settings";
 import Chance from "chance";
 import { stub } from "jest-micro-auto-stub";
-import noticeHelper from "../../helpers/notice-helper";
+import { Core } from "sc-game-base";
+import { BaseEventPublisher } from "sc-game-base/src/core/event-publishers";
+import gameSettings from "../../../src/game-settings";
 import { Actions } from "../../constants";
+import noticeHelper from "../../helpers/notice-helper";
+import { CashOutConsumer } from "../cash-out-consumer";
 
 const player = {
     socketId: "scoketId1",
@@ -22,7 +22,8 @@ describe("CashOutConsumer", () => {
     const payload = {
         freeBet: chance.bool(),
         roundId: chance.natural(),
-        halfCashOut: chance.bool(),
+        // halfCashOut: false,
+        betKey: 0,
     };
     const definition = new Core.GameDefinition(gameSettings);
     const gameData = {
@@ -33,12 +34,17 @@ describe("CashOutConsumer", () => {
         ingame: {
             [player.profile.name]: {
                 betQueue: [],
+                betTracks: {
+                    0: {},
+                    1: {},
+                },
             },
         },
         roundId: 1,
         remainingTime: 30,
     };
 
+    /** @type {CashOutConsumer} */
     let consumer;
 
     beforeEach(() => {
@@ -63,13 +69,7 @@ describe("CashOutConsumer", () => {
             consumer.consume(player, payload);
 
             // Assert
-            expect(consumer.validateRequest).toBeCalledWith(
-                player,
-                payload.roundId,
-                payload.halfCashOut,
-                payload.clientSendTime,
-                payload.receivedTime
-            );
+            expect(consumer.validateRequest).toHaveBeenCalledWith(player, payload.roundId, payload.betKey);
         });
 
         describe("when bet request is invalid", () => {
@@ -82,7 +82,7 @@ describe("CashOutConsumer", () => {
                 consumer.consume(player, payload);
 
                 // Assert
-                expect(consumer.adjustBetTracks).not.toBeCalled();
+                expect(consumer.adjustBetTracks).not.toHaveBeenCalled();
             });
 
             it("should NOT push bet to bet queue", () => {
@@ -104,7 +104,7 @@ describe("CashOutConsumer", () => {
                 consumer.consume(player, payload);
 
                 // Assert
-                expect(consumer.adjustBetTracks).toBeCalledWith(player.profile.name, payload);
+                expect(consumer.adjustBetTracks).toHaveBeenCalledWith(player.profile.name, payload);
             });
 
             it("should push bet to bet queue", () => {
@@ -125,11 +125,12 @@ describe("CashOutConsumer", () => {
                 [player.profile.name]: {
                     betQueue: [],
                     betTracks: {
-                        [Actions.Bet]: {
-                            time: new Date(),
+                        0: {
+                            [Actions.Bet]: {
+                                time: new Date(),
+                            },
+                            [Actions.CashOut]: undefined,
                         },
-                        [Actions.CashOut]: undefined,
-                        [Actions.HalfCashOut]: undefined,
                     },
                 },
             };
@@ -142,18 +143,19 @@ describe("CashOutConsumer", () => {
 
             it("should publishToUser failed bet", () => {
                 // Act
-                consumer.validateRequest(player, gameData.roundId, payload.halfCashOut);
+                consumer.validateRequest(player, gameData.roundId, payload.betKey);
 
                 // Assert
-                expect(consumer.publisher.publishToUser).toBeCalledWith(player.UID, {
+                expect(consumer.publisher.publishToUser).toHaveBeenCalledWith(player.UID, {
                     endBet: -1,
+                    betKey: payload.betKey,
                     notice: consumer.getNoticeObj(noticeHelper.invalidCashOut),
                 });
             });
 
             it("should return false", () => {
                 // Act
-                const result = consumer.validateRequest(player, gameData.roundId, payload.halfCashOut);
+                const result = consumer.validateRequest(player, gameData.roundId, payload.betKey);
 
                 // Assert
                 expect(result).toBeFalsy();
@@ -174,18 +176,19 @@ describe("CashOutConsumer", () => {
 
             it("should publishToUser failed bet", () => {
                 // Act
-                consumer.validateRequest(player, gameData.roundId, payload.halfCashOut);
+                consumer.validateRequest(player, gameData.roundId, payload.betKey);
 
                 // Assert
-                expect(consumer.publisher.publishToUser).toBeCalledWith(player.UID, {
+                expect(consumer.publisher.publishToUser).toHaveBeenCalledWith(player.UID, {
                     endBet: -1,
+                    betKey: payload.betKey,
                     notice: consumer.getNoticeObj(noticeHelper.invalidCashOut),
                 });
             });
 
             it("should return false", () => {
                 // Act
-                const result = consumer.validateRequest(player, gameData.roundId, payload.halfCashOut);
+                const result = consumer.validateRequest(player, gameData.roundId, payload.betKey);
 
                 // Assert
                 expect(result).toBeFalsy();
@@ -208,18 +211,19 @@ describe("CashOutConsumer", () => {
 
             it("should publishToUser failed bet", () => {
                 // Act
-                consumer.validateRequest(player, gameData.roundId, payload.halfCashOut);
+                consumer.validateRequest(player, gameData.roundId, payload.betKey);
 
                 // Assert
-                expect(consumer.publisher.publishToUser).toBeCalledWith(player.UID, {
+                expect(consumer.publisher.publishToUser).toHaveBeenCalledWith(player.UID, {
                     endBet: -1,
+                    betKey: payload.betKey,
                     notice: consumer.getNoticeObj(noticeHelper.invalidCashOut),
                 });
             });
 
             it("should return false", () => {
                 // Act
-                const result = consumer.validateRequest(player, gameData.roundId, payload.halfCashOut);
+                const result = consumer.validateRequest(player, gameData.roundId, payload.betKey);
 
                 // Assert
                 expect(result).toBeFalsy();
@@ -242,18 +246,19 @@ describe("CashOutConsumer", () => {
 
             it("should publishToUser failed bet", () => {
                 // Act
-                consumer.validateRequest(player, gameData.roundId, true);
+                consumer.validateRequest(player, gameData.roundId, payload.betKey);
 
                 // Assert
-                expect(consumer.publisher.publishToUser).toBeCalledWith(player.UID, {
+                expect(consumer.publisher.publishToUser).toHaveBeenCalledWith(player.UID, {
                     endBet: -1,
+                    betKey: payload.betKey,
                     notice: consumer.getNoticeObj(noticeHelper.invalidCashOut),
                 });
             });
 
             it("should return false", () => {
                 // Act
-                const result = consumer.validateRequest(player, gameData.roundId, payload.halfCashOut);
+                const result = consumer.validateRequest(player, gameData.roundId, payload.betKey);
 
                 // Assert
                 expect(result).toBeFalsy();
@@ -266,18 +271,19 @@ describe("CashOutConsumer", () => {
                 const roundId = gameData.roundId - 1;
 
                 // Act
-                consumer.validateRequest(player, roundId, payload.halfCashOut);
+                consumer.validateRequest(player, roundId, payload.betKey);
 
                 // Assert
-                expect(consumer.publisher.publishToUser).toBeCalledWith(player.UID, {
+                expect(consumer.publisher.publishToUser).toHaveBeenCalledWith(player.UID, {
                     endBet: -1,
+                    betKey: payload.betKey,
                     notice: consumer.getNoticeObj(noticeHelper.invalidCashOut, { gameRoundId: roundId }),
                 });
             });
 
             it("should return false", () => {
                 // Act
-                const result = consumer.validateRequest(player, gameData.roundId - 1, payload.halfCashOut);
+                const result = consumer.validateRequest(player, gameData.roundId - 1, payload.betKey);
 
                 // Assert
                 expect(result).toBeFalsy();
@@ -291,18 +297,19 @@ describe("CashOutConsumer", () => {
 
             it("should publishToUser failed bet", () => {
                 // Act
-                consumer.validateRequest(player, gameData.roundId, payload.halfCashOut);
+                consumer.validateRequest(player, gameData.roundId, payload.betKey);
 
                 // Assert
-                expect(consumer.publisher.publishToUser).toBeCalledWith(player.UID, {
+                expect(consumer.publisher.publishToUser).toHaveBeenCalledWith(player.UID, {
                     endBet: -1,
+                    betKey: payload.betKey,
                     notice: consumer.getNoticeObj(noticeHelper.invalidCashOut),
                 });
             });
 
             it("should return false", () => {
                 // Act
-                const result = consumer.validateRequest(player, gameData.roundId, payload.halfCashOut);
+                const result = consumer.validateRequest(player, gameData.roundId, payload.betKey);
 
                 // Assert
                 expect(result).toBeFalsy();
@@ -312,97 +319,91 @@ describe("CashOutConsumer", () => {
         describe("when cashOut valid", () => {
             it("should NOT publishToUser failed bet", () => {
                 // Act
-                consumer.validateRequest(player, gameData.roundId, payload.halfCashOut);
+                consumer.validateRequest(player, gameData.roundId, payload.betKey);
 
                 // Assert
-                expect(consumer.publisher.publishToUser).not.toBeCalled();
+                expect(consumer.publisher.publishToUser).not.toHaveBeenCalled();
             });
 
             it("should return true", () => {
                 // Act
-                const result = consumer.validateRequest(player, gameData.roundId, payload.halfCashOut);
+                const result = consumer.validateRequest(player, gameData.roundId, payload.betKey);
 
                 // Assert
                 expect(result).toBeTruthy();
             });
         });
 
-        describe("when deltaTime valid", () => {
-            it("should NOT publishToUser invalid cash out", () => {
-                // Act
-                const clientSendTime = new Date(2023, 8, 1, 10, 10);
-                const receivedTime = new Date(2023, 8, 1, 10, 10);
-                consumer.validateRequest(player, gameData.roundId, payload.halfCashOut, clientSendTime, receivedTime);
+        // describe("when deltaTime valid", () => {
+        //     it("should NOT publishToUser invalid cash out", () => {
+        //         // Act
+        //         consumer.validateRequest(player, gameData.roundId, payload.betKey);
 
-                // Assert
-                expect(consumer.publisher.publishToUser).not.toBeCalled();
-            });
+        //         // Assert
+        //         expect(consumer.publisher.publishToUser).not.toHaveBeenCalled();
+        //     });
 
-            it("should return true", () => {
-                //Arrange
-                const clientSendTime = new Date(2023, 8, 1, 10, 10);
-                const receivedTime = new Date(2023, 8, 1, 10, 10);
-                // Act
-                const result = consumer.validateRequest(player, gameData.roundId, payload.halfCashOut, clientSendTime, receivedTime);
+        //     it("should return true", () => {
+        //         //Arrange
+        //         // Act
+        //         const result = consumer.validateRequest(player, gameData.roundId, payload.betKey);
 
-                // Assert
-                expect(result).toBeTruthy();
-            });
-        });
+        //         // Assert
+        //         expect(result).toBeTruthy();
+        //     });
+        // });
 
-        describe("when deltaTime invalid", () => {
-            it("should  publishToUser invalid cash out", () => {
-                // Act
-                const clientSendTime = new Date(2023, 8, 1, 10, 10);
-                const receivedTime = new Date(2023, 8, 1, 12, 10);
-                consumer.validateRequest(player, gameData.roundId, payload.halfCashOut, clientSendTime, receivedTime);
+        // describe("when deltaTime invalid", () => {
+        //     it("should  publishToUser invalid cash out", () => {
+        //         // Act
+        //         consumer.validateRequest(player, gameData.roundId, payload.betKey);
 
-                // Assert
-                expect(consumer.publisher.publishToUser).toBeCalled();
-            });
+        //         // Assert
+        //         expect(consumer.publisher.publishToUser).toHaveBeenCalled();
+        //     });
 
-            it("should return false", () => {
-                //Arrange
-                const clientSendTime = new Date(2023, 8, 1, 10, 10);
-                const receivedTime = new Date(2023, 8, 1, 12, 10);
-                // Act
-                const result = consumer.validateRequest(player, gameData.roundId, payload.halfCashOut, clientSendTime, receivedTime);
+        //     it("should return false", () => {
+        //         //Arrange
+        //         const clientSendTime = new Date(2023, 8, 1, 10, 10);
+        //         const receivedTime = new Date(2023, 8, 1, 12, 10);
+        //         // Act
+        //         const result = consumer.validateRequest(player, gameData.roundId, payload.betKey);
 
-                // Assert
-                expect(result).toBeFalsy();
-            });
+        //         // Assert
+        //         expect(result).toBeFalsy();
+        //     });
 
-            it("should return false", () => {
-                //Arrange
-                const clientSendTime = new Date(2023, 8, 1, 12, 10);
-                const receivedTime = new Date(2023, 8, 1, 10, 10);
-                // Act
-                const result = consumer.validateRequest(player, gameData.roundId, payload.halfCashOut, clientSendTime, receivedTime);
+        //     it("should return false", () => {
+        //         //Arrange
+        //         const clientSendTime = new Date(2023, 8, 1, 12, 10);
+        //         const receivedTime = new Date(2023, 8, 1, 10, 10);
+        //         // Act
+        //         const result = consumer.validateRequest(player, gameData.roundId, payload.betKey);
 
-                // Assert
-                expect(result).toBeFalsy();
-            });
-        });
+        //         // Assert
+        //         expect(result).toBeFalsy();
+        //     });
+        // });
     });
 
     describe("adjustBetTrack", () => {
-        describe("when bet action is HalfCashOut", () => {
-            it("should update player betTracks halfCashOut Time", () => {
-                // Arrange
-                const bet = {
-                    halfCashOut: true,
-                    receivedTime: new Date(),
-                    action: Actions.HalfCashOut,
-                };
-                gameData.ingame[player.profile.name] = { betTracks: {} };
+        // describe("when bet action is HalfCashOut", () => {
+        //     it("should update player betTracks halfCashOut Time", () => {
+        //         // Arrange
+        //         const bet = {
+        //             halfCashOut: true,
+        //             receivedTime: new Date(),
+        //             action: Actions.HalfCashOut,
+        //         };
+        //         gameData.ingame[player.profile.name] = { betTracks: {} };
 
-                // Act
-                consumer.adjustBetTracks(player.profile.name, bet);
+        //         // Act
+        //         consumer.adjustBetTracks(player.profile.name, bet);
 
-                // Assert
-                expect(gameData.ingame[player.profile.name].betTracks[bet.action].time).toEqual(bet.receivedTime);
-            });
-        });
+        //         // Assert
+        //         expect(gameData.ingame[player.profile.name].betTracks[bet.action].time).toEqual(bet.receivedTime);
+        //     });
+        // });
 
         describe("when bet action is CashOut", () => {
             it("should update player betTracks CashOut Time", () => {
@@ -410,14 +411,24 @@ describe("CashOutConsumer", () => {
                 const bet = {
                     receivedTime: new Date(),
                     action: Actions.CashOut,
+                    betKey: payload.betKey,
                 };
-                gameData.ingame[player.profile.name] = { betTracks: {} };
+                gameData.ingame[player.profile.name] = {
+                    betTracks: {
+                        0: {
+                            [Actions.CashOut]: {
+                                time: new Date(),
+                            },
+                        },
+                        1: {},
+                    },
+                };
 
                 // Act
                 consumer.adjustBetTracks(player.profile.name, bet);
 
                 // Assert
-                expect(gameData.ingame[player.profile.name].betTracks[bet.action].time).toEqual(bet.receivedTime);
+                expect(gameData.ingame[player.profile.name].betTracks[payload.betKey][bet.action].time).toEqual(bet.receivedTime);
             });
         });
     });
