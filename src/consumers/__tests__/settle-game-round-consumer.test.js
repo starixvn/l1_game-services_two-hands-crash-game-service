@@ -4,6 +4,7 @@ import { stub, stubMongoose } from "jest-micro-auto-stub";
 import mongoose from "mongoose";
 import { RoundResultPublisher, UserBetResultPublisher } from "sc-game-base/src/core/event-publishers";
 import GameDefinition from "sc-game-base/src/core/game-definition";
+import { Actions } from "../../constants";
 import CrashGameData from "../../game-data";
 import { SettleGameRoundConsumer } from "../settle-game-round-consumer";
 
@@ -15,7 +16,10 @@ describe("SettleGameRoundConsumer", () => {
     const defaultGameData = new CrashGameData(30);
     defaultGameData.gameConfigs = Models.GameConfig({});
 
-    let gameData, definition, consumer;
+    let gameData, definition;
+
+    /** @type {SettleGameRoundConsumer}*/
+    let consumer;
 
     /** @type {UserRoundResultPublisher}*/
     const roundResultPublisher = stub(RoundResultPublisher);
@@ -86,7 +90,7 @@ describe("SettleGameRoundConsumer", () => {
 
         beforeEach(() => {
             roundsRepository.create.mockReturnValueOnce({ id: 1, result });
-            consumer.callEndGame = jest.fn();
+            consumer.callEndGame = jest.fn().mockResolvedValue({ isOk: true });
             consumer.queryBets = jest.fn(() => queryBets);
             consumer.calculateBetResult = jest.fn(() => betResult);
             consumer.captureBetResult = jest.fn();
@@ -99,7 +103,7 @@ describe("SettleGameRoundConsumer", () => {
             await consumer.settleBets(settleBetParams);
 
             // Assert
-            expect(consumer.queryBets).toBeCalledWith(settleBetParams.roundId);
+            expect(consumer.queryBets).toHaveBeenCalledWith(settleBetParams.roundId);
         });
 
         it("should query betLogs", async () => {
@@ -179,7 +183,7 @@ describe("SettleGameRoundConsumer", () => {
 
     describe("calculateBetResult", () => {
         const bet = {
-            amount: chance.natural(),
+            totalAmount: chance.natural(),
         };
 
         const betLogs = [];
@@ -197,7 +201,7 @@ describe("SettleGameRoundConsumer", () => {
             consumer.calculateBetResult(bet, betLogs);
 
             // Assert
-            expect(consumer.calculateWinAmount).toBeCalledWith(betLogs);
+            expect(consumer.calculateWinAmount).toHaveBeenCalledWith(betLogs);
         });
 
         it("should return Bet Result with total win equal winAmount", () => {
@@ -220,7 +224,7 @@ describe("SettleGameRoundConsumer", () => {
             const { totalBetAmount } = consumer.calculateBetResult(bet, betLogs);
 
             // Assert
-            expect(totalBetAmount).toBe(bet.amount);
+            expect(totalBetAmount).toBe(bet.totalAmount);
         });
 
         describe("when win amount is greater than bet amount", () => {
@@ -234,7 +238,7 @@ describe("SettleGameRoundConsumer", () => {
             it("should return Bet Result with netWin is greater than 0", () => {
                 // Act
                 const expectResult = +(winAmount - betAmount).toFixed(2);
-                const { netWin } = consumer.calculateBetResult({ amount: betAmount }, betLogs);
+                const { netWin } = consumer.calculateBetResult({ totalAmount: betAmount }, betLogs);
 
                 // Assert
                 expect(netWin).toBeGreaterThan(0);
@@ -243,7 +247,7 @@ describe("SettleGameRoundConsumer", () => {
 
             it("should return Bet Result with totalLost is 0", () => {
                 // Act
-                const { totalLost } = consumer.calculateBetResult({ amount: betAmount }, betLogs);
+                const { totalLost } = consumer.calculateBetResult({ totalAmount: betAmount }, betLogs);
 
                 // Assert
                 expect(totalLost).toBe(0);
@@ -260,7 +264,7 @@ describe("SettleGameRoundConsumer", () => {
 
             it("should return Bet Result with netWin is 0", () => {
                 // Act
-                const { netWin } = consumer.calculateBetResult({ amount: betAmount }, betLogs);
+                const { netWin } = consumer.calculateBetResult({ totalAmount: betAmount }, betLogs);
 
                 // Assert
                 expect(netWin).toBe(0);
@@ -269,7 +273,7 @@ describe("SettleGameRoundConsumer", () => {
             it("should return Bet Result with totalLost is greater than 0", () => {
                 // Act
                 const expectedResult = +(betAmount - winAmount).toFixed(2);
-                const { totalLost } = consumer.calculateBetResult({ amount: betAmount }, betLogs);
+                const { totalLost } = consumer.calculateBetResult({ totalAmount: betAmount }, betLogs);
 
                 // Assert
                 expect(totalLost).toBeGreaterThan(0);
@@ -302,8 +306,10 @@ describe("SettleGameRoundConsumer", () => {
         describe("when operator1 is under UM", () => {
             it("should only refund to users belong to operator1", async () => {
                 //Arrange
-                const bets = [player1, player2];
-                const betLogs = [];
+                const betLogs = [
+                    { playerId: player1.playerId, operatorId: player1.operatorId, action: Actions.Bet, amount: player1.amount, betKey: 1 },
+                    { playerId: player2.playerId, operatorId: player2.operatorId, action: Actions.Bet, amount: player2.amount, betKey: 1 },
+                ];
                 gameData.ingame = {
                     [player1.name]: {
                         playerData: {
@@ -324,7 +330,7 @@ describe("SettleGameRoundConsumer", () => {
                     },
                 };
                 //Act
-                const result = await consumer.addRefundBetLogForPlayersOnUM(bets, betLogs);
+                const result = await consumer.addRefundBetLogForPlayersOnUM(betLogs);
 
                 //Assert
                 expect(result.length).toBe(1);

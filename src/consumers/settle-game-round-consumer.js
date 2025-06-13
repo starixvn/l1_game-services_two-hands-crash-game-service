@@ -56,11 +56,14 @@ export class SettleGameRoundConsumer extends EventConsumers.TableSettleGameRound
                     bet.paid = true;
 
                     await bet.save();
-                    await this.callEndGame(bet, roundId, time, betResult);
-                    await this.userBetResultPublisher.publish(bet.uid, {
-                        ...betResult,
-                        reachMaxWin: betLog?.some((log) => log.reachMaxWin),
-                    });
+                    const endGameResult = await this.callEndGame(bet, roundId, time, betResult);
+
+                    if (endGameResult.isOk) {
+                        await this.userBetResultPublisher.publish(bet.uid, {
+                            ...betResult,
+                            reachMaxWin: betLog?.some((log) => log.reachMaxWin),
+                        });
+                    }
                 })
             );
         }
@@ -138,5 +141,20 @@ export class SettleGameRoundConsumer extends EventConsumers.TableSettleGameRound
             netWin: +(winLoss > 0 ? winLoss : 0).toFixed(2),
             totalLost: +(winLoss < 0 ? -winLoss : 0).toFixed(2),
         };
+    }
+
+    async callEndGame(bet, roundId, time, betResult) {
+        const { gameInfo, settlementInfo } = this.formatEndGameInfo(bet, roundId, time, betResult);
+
+        const apiResult = await this.endGame(bet.uid, gameInfo, settlementInfo);
+
+        if (apiResult.isOk) {
+            settlementInfo.red > 0 &&
+                callAndForget(this.gameManagementApiClient.users.updateBalance({ id: bet.uid, deductionAmount: -settlementInfo.red }));
+        } else {
+            this.userBetResultPublisher.publishApiError(bet.uid, apiResult.response);
+        }
+
+        return apiResult;
     }
 }
