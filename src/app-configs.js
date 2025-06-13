@@ -2,8 +2,8 @@ export default {
     hostingPort: 5000,
     apiSettings: {
         enabledApi: true,
-        apiUrl: "http://l1-proxy.lumigame.com/game-api",
-        authUrl: "https://auth.lumigame.com",
+        apiUrl: "http://hd-proxy.lumigame.com/game-api",
+        authUrl: "https://hd-auth.lumigame.com",
         client: {
             id: "game-server",
             secret: "gameserver@20luminet&",
@@ -14,7 +14,7 @@ export default {
         enabledApiLogs: true,
     },
     authenticateSettings: {
-        url: "https://auth.lumigame.com",
+        url: "https://hd-auth.lumigame.com",
         id: "game-services",
         secret: "gameservices@20luminet&",
         requestTimeout: 10000,
@@ -22,7 +22,7 @@ export default {
         audiences: ["api", "admin-api"],
     },
     userServiceSettings: {
-        url: "https://l1-proxy.lumigame.com/user",
+        url: "https://hd-proxy.lumigame.com/user",
     },
     socketOptions: {
         pingInterval: 60 * 1000,
@@ -33,9 +33,9 @@ export default {
     },
     enabledLogs: true,
     database: {
-        url: "mongodb://lmn_backend:LmnBackend@10.10.50.12:39100,10.10.50.13:39100,10.10.50.14:39100/?replicaSet=L1Local&appName=crashgame",
+        url: "mongodb://hotdog_backend:HotdogBackend@10.10.50.12:39400,10.10.50.13:39400,10.10.50.14:39400/?replicaSet=SPLocal0&appName=crashgame",
         options: {
-            dbName: "minigame",
+            dbName: "hotdog_minigame",
             useNewUrlParser: true,
             useUnifiedTopology: true,
             auto_reconnect: true,
@@ -51,4 +51,5 @@ export default {
     corsUrls: ["http://localhost:7456", "http://localhost:7000", "http://games.lumigame.com", "http://admin.lumigame.com"],
     chips: [1000, 500, 200, 100, 50, 10, 5, 1],
     maxQuickBets: 5,
+    prefixServiceName: "hd",
 };

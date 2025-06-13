@@ -62,4 +62,5 @@ export default {
         enabled: true,
         endpoint: "http://10.2.190.51:4318/v1/traces",
     },
+    prefixServiceName: "hd",
 };
