@@ -1,4 +1,5 @@
 import { Core } from "sc-game-base";
+import { SettleCashOutConsumer } from "../consumers/settle-cash-out-consumer";
 import { calculateCrashTimeInMillisecond } from "../helpers/crash-point-helper";
 
 export default class GameCrons extends Core.Crons.BaseGameCron {
@@ -60,6 +61,9 @@ export default class GameCrons extends Core.Crons.BaseGameCron {
         this.betsRepository = betsRepository;
         this.betLogsRepository = betLogsRepository;
         this.umInfoWatcher = umInfoWatcher;
+        /**
+         * @type {SettleCashOutConsumer}
+         */
         this.settleCashOutConsumer = settleCashOutConsumer;
     }
 
