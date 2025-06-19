@@ -1,8 +1,13 @@
 import { Core } from "sc-game-base";
-import { SettleCashOutConsumer } from "../consumers/settle-cash-out-consumer";
+import { SettleCashOutConsumer } from "../consumers";
 import { calculateCrashTimeInMillisecond } from "../helpers/crash-point-helper";
-
+import LiveGameCron from "./live-game-cron";
 export default class GameCrons extends Core.Crons.BaseGameCron {
+    /**
+     * @param {Object} dependencies
+     * @param {SettleCashOutConsumer} dependencies.settleCashOutConsumer
+     * @param {LiveGameCron} dependencies.liveGameCrons
+     */
     constructor({
         definition,
         gameData,
@@ -61,9 +66,6 @@ export default class GameCrons extends Core.Crons.BaseGameCron {
         this.betsRepository = betsRepository;
         this.betLogsRepository = betLogsRepository;
         this.umInfoWatcher = umInfoWatcher;
-        /**
-         * @type {SettleCashOutConsumer}
-         */
         this.settleCashOutConsumer = settleCashOutConsumer;
     }
 

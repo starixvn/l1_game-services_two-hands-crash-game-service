@@ -5,18 +5,19 @@ import Bot from "./bot";
 
 export default class LiveGameCron {
     /**
+     * @param {Object} dependencies
      * @param {LiveGamePublisher} dependencies.liveGamePublisher
      * @param {logger} dependencies.logService
+     * @param {GameData} dependencies.gameData
+     * @param {SettleCashOutConsumer} dependencies.settleCashOutConsumer
+     * @param {Bot} dependencies.bot
      */
     constructor({ liveGamePublisher, logService, gameData, liveGameLogsRepository, settleCashOutConsumer, bot }) {
-        /** @type {LiveGamePublisher} */
         this.liveGamePublisher = liveGamePublisher;
         this.logService = logService;
         this.gameData = gameData;
         this.liveGameLogsRepository = liveGameLogsRepository;
-        /** @type {SettleCashOutConsumer} */
         this.settleCashOutConsumer = settleCashOutConsumer;
-        /** @type {Bot} */
         this.bot = bot;
     }
 
