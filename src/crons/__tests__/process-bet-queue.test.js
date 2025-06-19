@@ -218,7 +218,6 @@ describe("ProcessBetQueue", () => {
         beforeEach(() => {
             proceedBetQueue.proceedBet = jest.fn();
             proceedBetQueue.proceedCashOut = jest.fn();
-            proceedBetQueue.proceedHalfCashOut = jest.fn();
             betLogsRepository.find().lean().exec.mockResolvedValueOnce([]);
         });
 

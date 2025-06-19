@@ -299,7 +299,6 @@ describe("gameCrons", () => {
                 beforeEach(() => {
                     cron.gameData.remainingTime = -1;
                     cron.startDelaySettleRound = jest.fn();
-                    cron.resultsRepository = {};
                 });
 
                 it("should call startDelaySettleRound", async () => {
@@ -508,13 +507,5 @@ describe("gameCrons", () => {
             expect(cron.updatePromotionOddsAndNotify).not.toHaveBeenCalled();
         });
 
-        // it("should handle errors during promotion odds update", async () => {
-        //     // Arrange
-        //     const error = new Error("Promotion update failed");
-        //     cron.updatePromotionOddsAndNotify.mockRejectedValueOnce(error);
-
-        //     // Act & Assert
-        //     await expect(cron.resetForNewRound()).rejects.toThrow(error);
-        // });
     });
 });

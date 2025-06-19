@@ -22,7 +22,6 @@ describe("CashOutConsumer", () => {
     const payload = {
         freeBet: chance.bool(),
         roundId: chance.natural(),
-        // halfCashOut: false,
         betKey: 0,
     };
     const definition = new Core.GameDefinition(gameSettings);
@@ -334,77 +333,10 @@ describe("CashOutConsumer", () => {
             });
         });
 
-        // describe("when deltaTime valid", () => {
-        //     it("should NOT publishToUser invalid cash out", () => {
-        //         // Act
-        //         consumer.validateRequest(player, gameData.roundId, payload.betKey);
-
-        //         // Assert
-        //         expect(consumer.publisher.publishToUser).not.toHaveBeenCalled();
-        //     });
-
-        //     it("should return true", () => {
-        //         //Arrange
-        //         // Act
-        //         const result = consumer.validateRequest(player, gameData.roundId, payload.betKey);
-
-        //         // Assert
-        //         expect(result).toBeTruthy();
-        //     });
-        // });
-
-        // describe("when deltaTime invalid", () => {
-        //     it("should  publishToUser invalid cash out", () => {
-        //         // Act
-        //         consumer.validateRequest(player, gameData.roundId, payload.betKey);
-
-        //         // Assert
-        //         expect(consumer.publisher.publishToUser).toHaveBeenCalled();
-        //     });
-
-        //     it("should return false", () => {
-        //         //Arrange
-        //         const clientSendTime = new Date(2023, 8, 1, 10, 10);
-        //         const receivedTime = new Date(2023, 8, 1, 12, 10);
-        //         // Act
-        //         const result = consumer.validateRequest(player, gameData.roundId, payload.betKey);
-
-        //         // Assert
-        //         expect(result).toBeFalsy();
-        //     });
-
-        //     it("should return false", () => {
-        //         //Arrange
-        //         const clientSendTime = new Date(2023, 8, 1, 12, 10);
-        //         const receivedTime = new Date(2023, 8, 1, 10, 10);
-        //         // Act
-        //         const result = consumer.validateRequest(player, gameData.roundId, payload.betKey);
-
-        //         // Assert
-        //         expect(result).toBeFalsy();
-        //     });
-        // });
+      
     });
 
     describe("adjustBetTrack", () => {
-        // describe("when bet action is HalfCashOut", () => {
-        //     it("should update player betTracks halfCashOut Time", () => {
-        //         // Arrange
-        //         const bet = {
-        //             halfCashOut: true,
-        //             receivedTime: new Date(),
-        //             action: Actions.HalfCashOut,
-        //         };
-        //         gameData.ingame[player.profile.name] = { betTracks: {} };
-
-        //         // Act
-        //         consumer.adjustBetTracks(player.profile.name, bet);
-
-        //         // Assert
-        //         expect(gameData.ingame[player.profile.name].betTracks[bet.action].time).toEqual(bet.receivedTime);
-        //     });
-        // });
-
         describe("when bet action is CashOut", () => {
             it("should update player betTracks CashOut Time", () => {
                 // Arrange
