@@ -87,7 +87,7 @@ export class SettleGameRoundConsumer extends EventConsumers.TableSettleGameRound
                     winAmount: bet.amount,
                     action: Actions.Refund,
                     betKey: bet.betKey,
-                    _id: undefined,
+                    _id: null,
                 })
             );
         }
@@ -116,7 +116,7 @@ export class SettleGameRoundConsumer extends EventConsumers.TableSettleGameRound
                         betKey: bet.betKey,
                         winAmount: 0,
                         action: Actions.Crash,
-                        _id: undefined,
+                        _id: null,
                     })
                 );
             }

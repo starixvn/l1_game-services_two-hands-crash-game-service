@@ -78,7 +78,9 @@ export default class Bot extends Table.Crons.TableGameBot {
     getBotsToBet() {
         const botsToBet = super.getBotsToBet();
 
-        botsToBet.forEach((bot) => bot.remainTickets--);
+        botsToBet.forEach((bot) => {
+            bot.remainTickets--;
+        });
 
         return botsToBet;
     }

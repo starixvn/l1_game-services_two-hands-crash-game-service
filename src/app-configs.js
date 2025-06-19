@@ -33,7 +33,7 @@ export default {
     },
     enabledLogs: true,
     database: {
-        url: "mongodb://hotdog_backend:HotdogBackend@10.10.50.12:39400,10.10.50.13:39400,10.10.50.14:39400/?replicaSet=SPLocal0&appName=crashgame",
+        url: "mongodb://127.0.0.1:27017",
         options: {
             dbName: "hotdog_minigame",
             useNewUrlParser: true,

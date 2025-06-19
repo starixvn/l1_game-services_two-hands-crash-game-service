@@ -446,7 +446,7 @@ describe("SettleGameRoundConsumer", () => {
                 betKey: player1.betKey,
                 winAmount: 0,
                 action: Actions.Crash,
-                _id: undefined
+                _id: null
             });
             expect(result[1]).toEqual({
                 ...player2,
@@ -455,7 +455,7 @@ describe("SettleGameRoundConsumer", () => {
                 betKey: player2.betKey,
                 winAmount: 0,
                 action: Actions.Crash,
-                _id: undefined
+                _id: null
             });
             expect(betLogsRepository.insertMany).toHaveBeenCalledWith(result);
         });
@@ -480,7 +480,7 @@ describe("SettleGameRoundConsumer", () => {
                 betKey: player2.betKey,
                 winAmount: 0,
                 action: Actions.Crash,
-                _id: undefined
+                _id: null
             });
             expect(betLogsRepository.insertMany).toHaveBeenCalledWith(result);
         });
@@ -505,7 +505,7 @@ describe("SettleGameRoundConsumer", () => {
                 betKey: player2.betKey,
                 winAmount: 0,
                 action: Actions.Crash,
-                _id: undefined
+                _id: null
             });
             expect(betLogsRepository.insertMany).toHaveBeenCalledWith(result);
         });
