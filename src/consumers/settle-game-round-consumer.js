@@ -148,10 +148,7 @@ export class SettleGameRoundConsumer extends EventConsumers.TableSettleGameRound
 
         const apiResult = await this.endGame(bet.uid, gameInfo, settlementInfo);
 
-        if (apiResult.isOk) {
-            settlementInfo.red > 0 &&
-                callAndForget(this.gameManagementApiClient.users.updateBalance({ id: bet.uid, deductionAmount: -settlementInfo.red }));
-        } else {
+        if (!apiResult.isOk) {
             this.userBetResultPublisher.publishApiError(bet.uid, apiResult.response);
         }
 
