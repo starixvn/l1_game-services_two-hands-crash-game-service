@@ -4,6 +4,7 @@ import { stub, stubMongoose } from "jest-micro-auto-stub";
 import mongoose from "mongoose";
 import { RoundResultPublisher, UserBetResultPublisher } from "sc-game-base/src/core/event-publishers";
 import GameDefinition from "sc-game-base/src/core/game-definition";
+import { Actions } from "../../constants";
 import CrashGameData from "../../game-data";
 import { SettleGameRoundConsumer } from "../settle-game-round-consumer";
 
@@ -15,7 +16,10 @@ describe("SettleGameRoundConsumer", () => {
     const defaultGameData = new CrashGameData(30);
     defaultGameData.gameConfigs = Models.GameConfig({});
 
-    let gameData, definition, consumer;
+    let gameData, definition;
+
+    /** @type {SettleGameRoundConsumer}*/
+    let consumer;
 
     /** @type {UserRoundResultPublisher}*/
     const roundResultPublisher = stub(RoundResultPublisher);
@@ -83,15 +87,21 @@ describe("SettleGameRoundConsumer", () => {
         };
 
         const settleBetParams = { result, roundId, time: new Date() };
+        const betLogs = [
+            { uid: queryBets[0].uid, action: Actions.Bet, amount: 100, winAmount: 200, reachMaxWin: true },
+            { uid: queryBets[1].uid, action: Actions.Bet, amount: 50, winAmount: 0, reachMaxWin: false }
+        ];
 
         beforeEach(() => {
             roundsRepository.create.mockReturnValueOnce({ id: 1, result });
-            consumer.callEndGame = jest.fn();
+            consumer.callEndGame = jest.fn().mockResolvedValue({ isOk: true });
             consumer.queryBets = jest.fn(() => queryBets);
             consumer.calculateBetResult = jest.fn(() => betResult);
             consumer.captureBetResult = jest.fn();
-            consumer.betLogsRepository.find().lean().exec.mockReturnValueOnce([]);
+            consumer.betLogsRepository.find().lean().exec.mockReturnValueOnce(betLogs);
             consumer.tempBetLogsRepository.find().lean().exec.mockReturnValueOnce([]);
+            consumer.addRefundBetLogForPlayersOnUM = jest.fn().mockReturnValue([]);
+            consumer.addCrashBetLog = jest.fn().mockReturnValue([]);
         });
 
         it("should call queryBets", async () => {
@@ -99,7 +109,7 @@ describe("SettleGameRoundConsumer", () => {
             await consumer.settleBets(settleBetParams);
 
             // Assert
-            expect(consumer.queryBets).toBeCalledWith(settleBetParams.roundId);
+            expect(consumer.queryBets).toHaveBeenCalledWith(settleBetParams.roundId);
         });
 
         it("should query betLogs", async () => {
@@ -108,6 +118,39 @@ describe("SettleGameRoundConsumer", () => {
 
             // Assert
             expect(betLogsRepository.find).toHaveBeenCalledWith({ roundId });
+            expect(tempBetLogsRepository.find).toHaveBeenCalledWith({ roundId });
+        });
+
+        it("should call addRefundBetLogForPlayersOnUM", async () => {
+            // Act
+            await consumer.settleBets(settleBetParams);
+
+            // Assert
+            expect(consumer.addRefundBetLogForPlayersOnUM).toHaveBeenCalledWith(betLogs);
+        });
+
+        it("should call addCrashBetLog", async () => {
+            // Act
+            await consumer.settleBets(settleBetParams);
+
+            // Assert
+            expect(consumer.addCrashBetLog).toHaveBeenCalledWith(betLogs, settleBetParams.time);
+        });
+
+        describe("when there are no bets", () => {
+            beforeEach(() => {
+                consumer.queryBets = jest.fn(() => []);
+            });
+
+            it("should not process any bets", async () => {
+                // Act
+                await consumer.settleBets(settleBetParams);
+
+                // Assert
+                expect(consumer.calculateBetResult).not.toHaveBeenCalled();
+                expect(consumer.callEndGame).not.toHaveBeenCalled();
+                expect(userBetResultPublisher.publish).not.toHaveBeenCalled();
+            });
         });
 
         Object.keys(queryBets)
@@ -119,7 +162,21 @@ describe("SettleGameRoundConsumer", () => {
                         await consumer.settleBets(settleBetParams);
 
                         // Assert
-                        expect(consumer.calculateBetResult).toHaveBeenCalledTimes(queryBets.length);
+                        expect(consumer.calculateBetResult).toHaveBeenNthCalledWith(
+                            betIndex + 1,
+                            queryBets[betIndex],
+                            betLogs.filter(log => log.uid === queryBets[betIndex].uid)
+                        );
+                    });
+
+                    it("should update bet with win amount and paid status", async () => {
+                        // Act
+                        await consumer.settleBets(settleBetParams);
+
+                        // Assert
+                        expect(queryBets[betIndex].betwin).toBe(betResult.totalWin);
+                        expect(queryBets[betIndex].paid).toBe(true);
+                        expect(queryBets[betIndex].save).toHaveBeenCalled();
                     });
 
                     it("should call endGame", async () => {
@@ -136,15 +193,19 @@ describe("SettleGameRoundConsumer", () => {
                         );
                     });
 
-                    it("should publish bet result to user", async () => {
+                    it("should publish bet result to user when endGame is successful", async () => {
                         // Act
                         await consumer.settleBets(settleBetParams);
 
                         // Assert
-                        expect(userBetResultPublisher.publish).toHaveBeenNthCalledWith(betIndex + 1, queryBets[betIndex].uid, {
-                            ...betResult,
-                            reachMaxWin: false,
-                        });
+                        expect(userBetResultPublisher.publish).toHaveBeenNthCalledWith(
+                            betIndex + 1,
+                            queryBets[betIndex].uid,
+                            {
+                                ...betResult,
+                                reachMaxWin: betLogs.some(log => log.uid === queryBets[betIndex].uid && log.reachMaxWin),
+                            }
+                        );
                     });
                 });
             });
@@ -179,7 +240,7 @@ describe("SettleGameRoundConsumer", () => {
 
     describe("calculateBetResult", () => {
         const bet = {
-            amount: chance.natural(),
+            totalAmount: chance.natural(),
         };
 
         const betLogs = [];
@@ -197,7 +258,7 @@ describe("SettleGameRoundConsumer", () => {
             consumer.calculateBetResult(bet, betLogs);
 
             // Assert
-            expect(consumer.calculateWinAmount).toBeCalledWith(betLogs);
+            expect(consumer.calculateWinAmount).toHaveBeenCalledWith(betLogs);
         });
 
         it("should return Bet Result with total win equal winAmount", () => {
@@ -220,7 +281,7 @@ describe("SettleGameRoundConsumer", () => {
             const { totalBetAmount } = consumer.calculateBetResult(bet, betLogs);
 
             // Assert
-            expect(totalBetAmount).toBe(bet.amount);
+            expect(totalBetAmount).toBe(bet.totalAmount);
         });
 
         describe("when win amount is greater than bet amount", () => {
@@ -234,7 +295,7 @@ describe("SettleGameRoundConsumer", () => {
             it("should return Bet Result with netWin is greater than 0", () => {
                 // Act
                 const expectResult = +(winAmount - betAmount).toFixed(2);
-                const { netWin } = consumer.calculateBetResult({ amount: betAmount }, betLogs);
+                const { netWin } = consumer.calculateBetResult({ totalAmount: betAmount }, betLogs);
 
                 // Assert
                 expect(netWin).toBeGreaterThan(0);
@@ -243,7 +304,7 @@ describe("SettleGameRoundConsumer", () => {
 
             it("should return Bet Result with totalLost is 0", () => {
                 // Act
-                const { totalLost } = consumer.calculateBetResult({ amount: betAmount }, betLogs);
+                const { totalLost } = consumer.calculateBetResult({ totalAmount: betAmount }, betLogs);
 
                 // Assert
                 expect(totalLost).toBe(0);
@@ -260,7 +321,7 @@ describe("SettleGameRoundConsumer", () => {
 
             it("should return Bet Result with netWin is 0", () => {
                 // Act
-                const { netWin } = consumer.calculateBetResult({ amount: betAmount }, betLogs);
+                const { netWin } = consumer.calculateBetResult({ totalAmount: betAmount }, betLogs);
 
                 // Assert
                 expect(netWin).toBe(0);
@@ -269,7 +330,7 @@ describe("SettleGameRoundConsumer", () => {
             it("should return Bet Result with totalLost is greater than 0", () => {
                 // Act
                 const expectedResult = +(betAmount - winAmount).toFixed(2);
-                const { totalLost } = consumer.calculateBetResult({ amount: betAmount }, betLogs);
+                const { totalLost } = consumer.calculateBetResult({ totalAmount: betAmount }, betLogs);
 
                 // Assert
                 expect(totalLost).toBeGreaterThan(0);
@@ -302,8 +363,10 @@ describe("SettleGameRoundConsumer", () => {
         describe("when operator1 is under UM", () => {
             it("should only refund to users belong to operator1", async () => {
                 //Arrange
-                const bets = [player1, player2];
-                const betLogs = [];
+                const betLogs = [
+                    { playerId: player1.playerId, operatorId: player1.operatorId, action: Actions.Bet, amount: player1.amount, betKey: 1 },
+                    { playerId: player2.playerId, operatorId: player2.operatorId, action: Actions.Bet, amount: player2.amount, betKey: 1 },
+                ];
                 gameData.ingame = {
                     [player1.name]: {
                         playerData: {
@@ -324,12 +387,198 @@ describe("SettleGameRoundConsumer", () => {
                     },
                 };
                 //Act
-                const result = await consumer.addRefundBetLogForPlayersOnUM(bets, betLogs);
+                const result = await consumer.addRefundBetLogForPlayersOnUM(betLogs);
 
                 //Assert
                 expect(result.length).toBe(1);
                 expect(betLogsRepository.insertMany).toHaveBeenCalled();
             });
         });
+    });
+
+    describe("addCrashBetLog", () => {
+        const crashTime = new Date();
+        const player1 = {
+            uid: chance.guid(),
+            playerId: chance.natural(),
+            operatorId: "operator1",
+            betKey: 1,
+            amount: 100
+        };
+        const player2 = {
+            uid: chance.guid(),
+            playerId: chance.natural(),
+            operatorId: "operator2",
+            betKey: 1,
+            amount: 200
+        };
+
+        const betLogs = [
+            { ...player1, action: Actions.Bet },
+            { ...player2, action: Actions.Bet }
+        ];
+
+        beforeEach(() => {
+            betLogsRepository.insertMany = jest.fn();
+        });
+
+        it("should create crash bet logs for bets without cash out or refund", async () => {
+            // Act
+            const result = await consumer.addCrashBetLog(betLogs, crashTime);
+
+            // Assert
+            expect(result).toHaveLength(2);
+            expect(result[0]).toEqual({
+                ...player1,
+                time: crashTime,
+                amount: player1.amount,
+                betKey: player1.betKey,
+                winAmount: 0,
+                action: Actions.Crash,
+                _id: null
+            });
+            expect(result[1]).toEqual({
+                ...player2,
+                time: crashTime,
+                amount: player2.amount,
+                betKey: player2.betKey,
+                winAmount: 0,
+                action: Actions.Crash,
+                _id: null
+            });
+            expect(betLogsRepository.insertMany).toHaveBeenCalledWith(result);
+        });
+
+        it("should not create crash bet logs for bets with cash out", async () => {
+            // Arrange
+            const betLogsWithCashOut = [
+                { ...player1, action: Actions.Bet },
+                { ...player2, action: Actions.Bet },
+                { ...player1, action: Actions.CashOut }
+            ];
+
+            // Act
+            const result = await consumer.addCrashBetLog(betLogsWithCashOut, crashTime);
+
+            // Assert
+            expect(result).toHaveLength(1);
+            expect(result[0]).toEqual({
+                ...player2,
+                time: crashTime,
+                amount: player2.amount,
+                betKey: player2.betKey,
+                winAmount: 0,
+                action: Actions.Crash,
+                _id: null
+            });
+            expect(betLogsRepository.insertMany).toHaveBeenCalledWith(result);
+        });
+
+        it("should not create crash bet logs for bets with refund", async () => {
+            // Arrange
+            const betLogsWithRefund = [
+                { ...player1, action: Actions.Bet },
+                { ...player2, action: Actions.Bet },
+                { ...player1, action: Actions.Refund }
+            ];
+
+            // Act
+            const result = await consumer.addCrashBetLog(betLogsWithRefund, crashTime);
+
+            // Assert
+            expect(result).toHaveLength(1);
+            expect(result[0]).toEqual({
+                ...player2,
+                time: crashTime,
+                amount: player2.amount,
+                betKey: player2.betKey,
+                winAmount: 0,
+                action: Actions.Crash,
+                _id: null
+            });
+            expect(betLogsRepository.insertMany).toHaveBeenCalledWith(result);
+        });
+
+        it("should handle empty bet logs", async () => {
+            // Act
+            const result = await consumer.addCrashBetLog([], crashTime);
+
+            // Assert
+            expect(result).toHaveLength(0);
+        });
+
+        it("should handle bet logs with no bet actions", async () => {
+            // Arrange
+            const betLogsWithoutBets = [
+                { ...player1, action: Actions.CashOut },
+                { ...player2, action: Actions.Refund }
+            ];
+
+            // Act
+            const result = await consumer.addCrashBetLog(betLogsWithoutBets, crashTime);
+
+            // Assert
+            expect(result).toHaveLength(0);
+        });
+    });
+
+    describe("callEndGame", () => {
+        const bet = {
+            uid: chance.guid(),
+            playerId: chance.natural(),
+            operatorId: "operator1",
+            amount: 100,
+            betKey: 1
+        };
+        const roundId = chance.natural();
+        const time = new Date();
+        const betResult = {
+            totalBetAmount: 100,
+            totalWin: 200,
+            netWin: 100,
+            totalLost: 0
+        };
+
+        beforeEach(() => {
+            consumer.formatEndGameInfo = jest.fn().mockReturnValue({
+                gameInfo: { gameId: 1, roundId },
+                settlementInfo: { red: 100 }
+            });
+            consumer.userBetResultPublisher = {
+                publishApiError: jest.fn()
+            };
+        });
+
+        it("should call endGame with formatted info", async () => {
+            // Arrange
+            endGame.mockResolvedValueOnce({ isOk: true });
+
+            // Act
+            await consumer.callEndGame(bet, roundId, time, betResult);
+
+            // Assert
+            expect(consumer.formatEndGameInfo).toHaveBeenCalledWith(bet, roundId, time, betResult);
+            expect(endGame).toHaveBeenCalledWith(
+                bet.uid,
+                { gameId: 1, roundId },
+                { red: 100 }
+            );
+        });
+
+        it("should publish API error when endGame fails", async () => {
+            // Arrange
+            const errorResponse = "Error message";
+            endGame.mockResolvedValueOnce({ isOk: false, response: errorResponse });
+
+            // Act
+            await consumer.callEndGame(bet, roundId, time, betResult);
+
+            // Assert
+            expect(consumer.userBetResultPublisher.publishApiError).toHaveBeenCalledWith(
+                bet.uid,
+                errorResponse
+            );
+        });
+
     });
 });

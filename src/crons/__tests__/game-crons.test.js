@@ -2,6 +2,7 @@ import { stub, stubMongoose } from "jest-micro-auto-stub";
 import mongoose from "mongoose";
 import { Core } from "sc-game-base";
 import { GameDefinition } from "sc-game-base/src/core";
+import { BaseGameCron } from "sc-game-base/src/core/crons";
 import { ProvablyFairConsumer, UnsettledRoundConsumer } from "sc-game-base/src/core/event-consumers";
 import { GameStatusPublisher, RunningRoundInfoPublisher } from "sc-game-base/src/core/event-publishers";
 import { SettleGameRoundConsumer } from "../../consumers/settle-game-round-consumer";
@@ -11,7 +12,6 @@ import UmInfoWatcher from "../../watchers/um-info-watcher";
 import Bot from "../bot";
 import GameCrons from "../game-crons";
 import LiveGameCrons from "../live-game-cron";
-import { BaseGameCron } from "sc-game-base/src/core/crons";
 
 jest.mock("sc-game-base/src/core/event-publishers");
 jest.mock("../../consumers/settle-game-round-consumer");
@@ -104,6 +104,8 @@ const createBaseGameCron = function () {
         provablyFairConsumer,
     });
 };
+
+/** @type {GameCrons}*/
 let cron;
 
 describe("gameCrons", () => {
@@ -142,7 +144,7 @@ describe("gameCrons", () => {
             await cron.start();
 
             // Assert
-            expect(cron.bot.resetInRoomTrackings).toBeCalled();
+            expect(cron.bot.resetInRoomTrackings).toHaveBeenCalled();
         });
 
         it("should call super.start", async () => {
@@ -153,7 +155,7 @@ describe("gameCrons", () => {
             await cron.start();
 
             // Assert
-            expect(BaseGameCron.prototype.start).toBeCalled();
+            expect(BaseGameCron.prototype.start).toHaveBeenCalled();
         });
 
         it("should call umInfoWatcher.initChangeStream", async () => {
@@ -161,7 +163,7 @@ describe("gameCrons", () => {
             await cron.start();
 
             // Assert
-            expect(umInfoWatcher.initChangeStream).toBeCalled();
+            expect(umInfoWatcher.initChangeStream).toHaveBeenCalled();
         });
     });
 
@@ -191,6 +193,17 @@ describe("gameCrons", () => {
                 // Assert
                 expect(cron.gameData.remainingTime).toBe(122);
             });
+
+            it("should not reduce remaining time when game is disabled", async () => {
+                cron.gameData.disabled = true;
+                cron.gameData.remainingTime = 123;
+
+                // Act
+                await cron.proceed();
+
+                // Assert
+                expect(cron.gameData.remainingTime).toBe(123);
+            });
         });
 
         describe("when starting time", () => {
@@ -202,7 +215,18 @@ describe("gameCrons", () => {
                 await cron.proceed();
 
                 // Assert
-                expect(cron.resetForNewRound).toBeCalled();
+                expect(cron.resetForNewRound).toHaveBeenCalled();
+            });
+
+            it("should not call resetForNewRound when not starting time", async () => {
+                // Arrange
+                cron.isStartingTime = jest.fn().mockReturnValueOnce(false);
+
+                // Act
+                await cron.proceed();
+
+                // Assert
+                expect(cron.resetForNewRound).not.toHaveBeenCalled();
             });
         });
 
@@ -215,7 +239,7 @@ describe("gameCrons", () => {
                 await cron.proceed();
 
                 // Assert
-                expect(cron.gameStatusPublisher.publishStartPlacingBetStatus).toBeCalled();
+                expect(cron.gameStatusPublisher.publishStartPlacingBetStatus).toHaveBeenCalled();
             });
 
             describe("when exist resultsRepository", () => {
@@ -227,7 +251,7 @@ describe("gameCrons", () => {
                     await cron.proceed();
 
                     // Assert
-                    expect(cron.roundResultConsumer.generateServerSeedAndPublishHash).toBeCalled();
+                    expect(cron.roundResultConsumer.generateServerSeedAndPublishHash).toHaveBeenCalled();
                 });
             });
 
@@ -240,7 +264,34 @@ describe("gameCrons", () => {
                     await cron.proceed();
 
                     // Assert
-                    expect(cron.gameStatusPublisher.publishEndPlacingBetStatus).toBeCalled();
+                    expect(cron.gameStatusPublisher.publishEndPlacingBetStatus).toHaveBeenCalled();
+                });
+            });
+
+            describe("when remaining time is between placing bets and live time", () => {
+                it("should run bot and publish running round info", async () => {
+                    // Arrange
+                    cron.gameData.remainingTime = durations.placingBets - 1;
+                    cron.bot = { run: jest.fn() };
+
+                    // Act
+                    await cron.proceed();
+
+                    // Assert
+                    expect(cron.bot.run).toHaveBeenCalled();
+                    expect(cron.runningRoundInfoPublisher.publish).toHaveBeenCalled();
+                });
+
+                it("should not run bot when bot is null", async () => {
+                    // Arrange
+                    cron.gameData.remainingTime = durations.placingBets - 1;
+                    cron.bot = null;
+
+                    // Act
+                    await cron.proceed();
+
+                    // Assert
+                    expect(cron.runningRoundInfoPublisher.publish).toHaveBeenCalled();
                 });
             });
 
@@ -255,7 +306,7 @@ describe("gameCrons", () => {
                     await cron.proceed();
 
                     // Assert
-                    expect(cron.startDelaySettleRound).toBeCalled();
+                    expect(cron.startDelaySettleRound).toHaveBeenCalled();
                 });
 
                 it("should call provablyFairConsumer.updateClientSeedFromBets", async () => {
@@ -263,7 +314,7 @@ describe("gameCrons", () => {
                     await cron.proceed();
 
                     // Assert
-                    expect(provablyFairConsumer.updateClientSeedFromBets).toBeCalled();
+                    expect(provablyFairConsumer.updateClientSeedFromBets).toHaveBeenCalled();
                 });
 
                 it("should call roundResultConsumer.generateResult", async () => {
@@ -271,7 +322,7 @@ describe("gameCrons", () => {
                     await cron.proceed();
 
                     // Assert
-                    expect(roundResultConsumer.generateResult).toBeCalled();
+                    expect(roundResultConsumer.generateResult).toHaveBeenCalled();
                 });
 
                 it("should reset settlementResultFromAdmin", async () => {
@@ -297,7 +348,19 @@ describe("gameCrons", () => {
                         await cron.proceed();
 
                         // Assert
-                        expect(cron.liveGameCrons.start).toBeCalled();
+                        expect(cron.liveGameCrons.start).toHaveBeenCalled();
+                    });
+
+                    it("should not start liveGameCrons when result <= 1", async () => {
+                        // Arrange
+                        cron.liveGameCrons = { start: jest.fn() };
+                        cron.gameData.result = 1;
+
+                        // Act
+                        await cron.proceed();
+
+                        // Assert
+                        expect(cron.liveGameCrons.start).not.toHaveBeenCalled();
                     });
                 });
             });
@@ -307,6 +370,15 @@ describe("gameCrons", () => {
     describe("startDelaySettleRound", () => {
         beforeEach(() => {
             jest.useFakeTimers();
+            cron.liveGameCrons.stop = jest.fn();
+            cron.settleCashOutConsumer = {
+                proceedAutoCashOut: jest.fn()
+            };
+            cron.settleGameRoundConsumer = {
+                settleRound: jest.fn()
+            };
+            cron.gameData.result = 2;
+            cron.definition.durations = durations;
         });
 
         afterEach(() => {
@@ -318,7 +390,7 @@ describe("gameCrons", () => {
             jest.spyOn(global, "setTimeout");
 
             // Act
-            cron.startDelaySettleRound(gameData, definition);
+            cron.startDelaySettleRound();
 
             // Assert
             expect(setTimeout).toHaveBeenCalledWith(expect.any(Function), 1000);
@@ -331,10 +403,109 @@ describe("gameCrons", () => {
             cron.gameData.startTime = undefined;
 
             // Act
-            cron.startDelaySettleRound(gameData, definition);
+            cron.startDelaySettleRound();
 
             // Assert
             expect(cron.gameData.startTime).toBe(mockDate);
         });
+
+        it("should execute settlement sequence after timeout", async () => {
+            // Act
+            cron.startDelaySettleRound();
+            await jest.runAllTimersAsync();
+
+            // Assert
+            expect(cron.liveGameCrons.stop).toHaveBeenCalled();
+            expect(cron.settleCashOutConsumer.proceedAutoCashOut).toHaveBeenCalledWith(cron.gameData.result);
+            expect(cron.gameData.remainingTime).toBe(durations.wholeRound);
+            expect(cron.settleGameRoundConsumer.settleRound).toHaveBeenCalledWith(cron.gameData);
+        });
+
+        it("should handle errors during settlement", async () => {
+            // Arrange
+            const error = new Error("Settlement failed");
+            cron.settleGameRoundConsumer.settleRound.mockRejectedValueOnce(error);
+
+            // Act
+            cron.startDelaySettleRound();
+            await jest.runAllTimersAsync();
+
+            // Assert
+            expect(cron.logService.logError).toHaveBeenCalledWith(error);
+        });
+    });
+
+    describe("resetForNewRound", () => {
+        beforeEach(() => {
+            cron.gameData.betList = {
+                player1: { bet: 100 },
+                player2: { bet: 200 }
+            };
+            cron.bot = {
+                reset: jest.fn()
+            };
+            cron.appConfigs = {
+                enabledBoostedOdds: true
+            };
+            cron.updatePromotionOddsAndNotify = jest.fn();
+        });
+
+        it("should call super.resetForNewRound", async () => {
+            // Arrange
+            spyOn(BaseGameCron.prototype, "resetForNewRound");
+
+            // Act
+            await cron.resetForNewRound();
+
+            // Assert
+            expect(BaseGameCron.prototype.resetForNewRound).toHaveBeenCalled();
+        });
+
+        it("should clear betList", async () => {
+            // Act
+            await cron.resetForNewRound();
+
+            // Assert
+            expect(cron.gameData.betList).toEqual({});
+        });
+
+        it("should reset bot if bot exists", async () => {
+            // Act
+            await cron.resetForNewRound();
+
+            // Assert
+            expect(cron.bot.reset).toHaveBeenCalled();
+        });
+
+        it("should not reset bot if bot does not exist", async () => {
+            // Arrange
+            cron.bot = null;
+
+            // Act
+            await cron.resetForNewRound();
+
+            // Assert
+            expect(cron.bot).toBeNull();
+        });
+
+        it("should update promotion odds when enabledBoostedOdds is true", async () => {
+            // Act
+            await cron.resetForNewRound();
+
+            // Assert
+            expect(cron.updatePromotionOddsAndNotify).toHaveBeenCalled();
+        });
+
+        it("should not update promotion odds when enabledBoostedOdds is false", async () => {
+            // Arrange
+            cron.appConfigs.enabledBoostedOdds = false;
+
+            // Act
+            await cron.resetForNewRound();
+
+            // Assert
+            expect(cron.updatePromotionOddsAndNotify).not.toHaveBeenCalled();
+        });
+
     });
 });

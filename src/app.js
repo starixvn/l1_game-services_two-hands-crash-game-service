@@ -1,17 +1,17 @@
-import appConfigs from "./app-configs";
 import { addIdentifiers, initSpanProcessor, initializer } from "sc-instrument";
+import appConfigs from "./app-configs";
 
+import { gameConfigs as gameConfigsRepository } from "sc-base-database";
+import { logger } from "sc-common";
 import { Core, Table } from "sc-game-base";
 import ContainerRegistry from "./container-registry";
 import CrashGameData from "./game-data";
 import gameSettings from "./game-settings";
-import { logger } from "sc-common";
-import { gameConfigs as gameConfigsRepository } from "sc-base-database";
 import { generateRawResultForHash, generateResult, getSettlementResult } from "./helpers/result-helper";
 
 const run = async () => {
     const appName = process.env.APP_NAME;
-    const gameName = appName ? appName.replace("service", "").replaceAll("_", "") : "";
+    const gameName = appName ? appName.match(new RegExp(`(?:${appConfigs.prefixServiceName ?? ""})_?([\\w]+)_service`, "i"))[1].replaceAll("_", "") : "";
 
     if (appConfigs.otel?.enabled) {
         const { otel } = appConfigs;

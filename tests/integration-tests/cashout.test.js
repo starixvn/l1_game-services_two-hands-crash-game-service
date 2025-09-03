@@ -14,30 +14,33 @@ describe("cashOut", () => {
         await userClientDriver.handleSignedInEvent();
         userClientDriver.sendInGameEvent();
     });
-
+    const roundId = 4;
     describe("when cashOut", () => {
         it("should cash out successful", async () => {
+            console.time("cashOut");
             const betAmount = 1;
             await userClientDriver.handleGameEvent((data) => data.spb);
             await new Promise((r) => setTimeout(r, 1000));
             userClientDriver.emit("bet", {
                 amount: betAmount,
+                betKey: 0,
                 clientSeed: "1234",
                 clientSendTime: new Date(),
+                freeBet: false,
+                m: 1,
+                roundId,
                 username: normalUser.playerName,
             });
 
             await userClientDriver.handleGameEvent((data) => data.endBet);
             await userClientDriver.handleGameEvent((data) => data.c?.m > 1);
-            userClientDriver.emit("cashOut", { clientSendTime: new Date(), halfCashOut: true });
-            const { halfCashOut } = await userClientDriver.handleGameEvent((data) => data.halfCashOut);
-            userClientDriver.emit("cashOut", { clientSendTime: new Date() });
+            userClientDriver.emit("cashOut", { betKey: 0, roundId, m: 1, clientSendTime: new Date() });
             const { cashOut } = await userClientDriver.handleGameEvent((data) => data.cashOut);
+            console.timeEnd("cashOut");
             const { status } = await userClientDriver.handleGameEvent((data) => data.status);
 
-            expect(halfCashOut.amount).toBe(betAmount / 2);
-            expect(cashOut.amount).toBe(betAmount / 2);
-            expect(status.bet).toBe(halfCashOut.win + cashOut.win);
+            expect(cashOut.amount).toBe(betAmount);
+            expect(status.bet).toBe(betAmount * cashOut.multiplier);
         }, 60_000);
     });
 
@@ -49,14 +52,18 @@ describe("cashOut", () => {
             await new Promise((r) => setTimeout(r, 1000));
             userClientDriver.emit("bet", {
                 amount: betAmount,
+                autoCashOut,
+                betKey: 0,
                 clientSeed: "1234",
                 clientSendTime: new Date(),
+                freeBet: false,
+                m: 1,
+                roundId: 5,
                 username: normalUser.playerName,
-                autoCashOut,
             });
 
-            await userClientDriver.handleGameEvent((data) => data.endBet);
-            await userClientDriver.handleGameEvent((data) => data.c?.m > 1);
+            const endBet = await userClientDriver.handleGameEvent((data) => data.endBet);
+            const m = await userClientDriver.handleGameEvent((data) => data.c?.m > 1);
             const { cashOut } = await userClientDriver.handleGameEvent((data) => data.cashOut);
             const { status } = await userClientDriver.handleGameEvent((data) => data.status);
 
