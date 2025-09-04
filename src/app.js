@@ -11,7 +11,7 @@ import { generateRawResultForHash, generateResult, getSettlementResult } from ".
 
 const run = async () => {
     const appName = process.env.APP_NAME;
-    const gameName = appName ? appName.match(new RegExp(`(?:${appConfigs.prefixServiceName ?? ""})_?([\\w]+)_service`, "i"))[1].replaceAll("_", "") : "";
+    const gameName = appName ? appName.replace("service", "").replaceAll("_", "") : "";
 
     if (appConfigs.otel?.enabled) {
         const { otel } = appConfigs;
