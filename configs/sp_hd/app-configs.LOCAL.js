@@ -38,7 +38,6 @@ export default {
             dbName: "hotdog_minigame",
             useNewUrlParser: true,
             useUnifiedTopology: true,
-            auto_reconnect: true,
         },
     },
     sentry: {
