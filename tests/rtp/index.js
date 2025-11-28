@@ -159,6 +159,78 @@ const exportRtpResultAtSpecificCashOut = (cashOutPoint, numberOfRuns = 1_000_000
     fs.writeFileSync(`./tests/rtp/stat_fixed_${cashOutPoint}x_${numberOfRuns}.txt`, jsonData);
 };
 
+const exportRtpResultWithFixedBetAndCashout = (betAmount, cashOutPoint, numberOfRuns = 100_000) => {
+    let max = 0;
+    let maxwin = 0;
+    let crashPointRange = {};
+    let totalWinAmount = 0;
+    let winCount = 0;
+    let totalBetAmount = 0;
+
+    for (let index = 0; index < numberOfRuns; index++) {
+        const clientSeeds = generateClientSeeds();
+        const serverSeed = generateServerSeed();
+        const finalSeeds = generateFinalSeeds(serverSeed, clientSeeds);
+        const crashPoint = generateResult(finalSeeds.finalHash);
+        const range = getCrashPointRange(crashPoint);
+        crashPointRange[range] ? crashPointRange[range]++ : (crashPointRange[range] = 1);
+        totalBetAmount += betAmount;
+        crashPoint > max && (max = crashPoint);
+        if (cashOutPoint < crashPoint) {
+            winCount++;
+            const winAmount = cashOutPoint * betAmount;
+            winAmount > maxwin && (maxwin = winAmount);
+            totalWinAmount += roundFloat(winAmount);
+        }
+    }
+
+    const rtpPercent = ((totalWinAmount / totalBetAmount) * 100).toFixed(4);
+    const winPercent = ((winCount / numberOfRuns) * 100).toFixed(4);
+    const theoreticalRTP = ((97 * (cashOutPoint - 1)) / cashOutPoint).toFixed(4);
+    const theoreticalWinRate = ((97 / cashOutPoint) * 100).toFixed(4);
+
+    let jsonData = "";
+
+    jsonData += `*** FIXED BET & FIXED CASH OUT POINT *** \n`;
+    jsonData += `*** Bet Amount *** - ${betAmount.toLocaleString()} \n`;
+    jsonData += `*** Cash Out Point *** - ${cashOutPoint}x \n\n`;
+    jsonData += `*** RESULTS *** \n`;
+    jsonData += `*** RTP *** - ${rtpPercent}% (Theoretical: ${theoreticalRTP}%) \n`;
+    jsonData += `*** Win Percent *** - ${winPercent}% (Theoretical: ${theoreticalWinRate}%) \n`;
+    jsonData += `*** Win Count *** - ${winCount.toLocaleString()} / ${numberOfRuns.toLocaleString()} \n`;
+    jsonData += `*** Total Bet Amount *** - ${totalBetAmount.toLocaleString()} \n`;
+    jsonData += `*** Total Win Amount *** - ${totalWinAmount.toLocaleString()} \n`;
+    jsonData += `*** Net Profit/Loss *** - ${(totalWinAmount - totalBetAmount).toLocaleString()} \n`;
+    jsonData += `*** Maximum Single Win *** - ${maxwin.toLocaleString()} \n`;
+    jsonData += `*** Maximum Multiplier *** - ${max} \n\n`;
+    jsonData += `*** Crash Point Distribution *** \n`;
+    jsonData += `${"Range".padEnd(20)} | ${"Count".padEnd(12)} | Percentage\n`;
+    jsonData += `${"-".repeat(20)} | ${"-".repeat(12)} | ${"-".repeat(10)}\n`;
+
+    Object.entries(crashPointRange)
+        .sort((a, b) => {
+            const aMin = parseFloat(a[0].split("x")[0]);
+            const bMin = parseFloat(b[0].split("x")[0]);
+            return aMin - bMin;
+        })
+        .forEach(([range, count]) => {
+            const percentage = ((count / numberOfRuns) * 100).toFixed(2);
+            jsonData += `${range.padEnd(20)} | ${count.toString().padEnd(12)} | ${percentage}%\n`;
+        });
+
+    console.log(`\n========== Fixed Bet RTP Test (${numberOfRuns.toLocaleString()} runs) ==========`);
+    console.log(`Bet Amount: ${betAmount.toLocaleString()}`);
+    console.log(`Cash Out Point: ${cashOutPoint}x`);
+    console.log(`RTP: ${rtpPercent}% (Theoretical: ${theoreticalRTP}%)`);
+    console.log(`Win Rate: ${winPercent}% (Theoretical: ${theoreticalWinRate}%)`);
+    console.log(`Wins: ${winCount.toLocaleString()} / ${numberOfRuns.toLocaleString()}`);
+    console.log(`Total Wagered: ${totalBetAmount.toLocaleString()}`);
+    console.log(`Total Won: ${totalWinAmount.toLocaleString()}`);
+    console.log(`Net P/L: ${(totalWinAmount - totalBetAmount).toLocaleString()}`);
+
+    fs.writeFileSync(`./tests/rtp/stat_fixed_bet_${betAmount}_cashout_${cashOutPoint}x_${numberOfRuns}.txt`, jsonData);
+};
+
 const minPoint = 1.01,
     maxPoint = 10,
     crashAtBase = 2;
@@ -179,3 +251,12 @@ exportRtpResultAtSpecificCashOut(2.0, 100_000);
 exportRtpResultAtSpecificCashOut(3.0, 100_000);
 exportRtpResultAtSpecificCashOut(5.0, 100_000);
 exportRtpResultAtSpecificCashOut(10.0, 100_000);
+
+// Fixed bet amount AND fixed cash out point tests
+console.log("\n======================================");
+console.log("Testing RTP with Fixed Bet & Fixed Cashout");
+console.log("======================================");
+
+exportRtpResultWithFixedBetAndCashout(20000, 1.5, 100_000);
+exportRtpResultWithFixedBetAndCashout(20000, 2.0, 100_000);
+exportRtpResultWithFixedBetAndCashout(20000, 3.0, 100_000);
