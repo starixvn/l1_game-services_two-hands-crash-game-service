@@ -40,20 +40,20 @@ export default {
         },
     },
     sentry: {
-        sentryUrl: "http://d039f2abe16b4252a70cdf60fff232b6@10.2.190.51:9009/282",
+        sentryUrl: "http://f4980024f65945179a125e7ce17286d0@sentry-scklprod-ovs.ops-klprod.gamora.prod/178",
         logIdentifier: "HD-crashgame",
-        env: "KLPROD",
+        env: "PROD",
     },
     adminSecretKey: "asWDEerfOIdgsdqRTFabvmgh",
     metrics: {
         enable: true,
-        secretKey: "6c1f0f28-70f2-46ae-b031-22624a6cd8df",
+        secretKey: "30d15293-c7de-4c77-9293-b85d6c5bfe1a",
     },
     enableMsgpackParser: true,
     otel: {
         system: "HD",
         enabled: true,
-        endpoint: "http://10.2.190.51:4318/v1/traces",
+        endpoint: "http://jaeger-collector-sc.ops-klprod.gamora.prod:32318/v1/traces",
     },
     prefixServiceName: "hd",
 };
