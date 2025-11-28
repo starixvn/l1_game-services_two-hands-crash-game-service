@@ -1,7 +1,9 @@
-import { generateResult, getFinalResult } from "../../src/helpers/result-helper";
+import { generateResult } from "../../src/helpers/result-helper";
 import fs from "fs";
 import Chance from "chance";
 import { roundFloat } from "../../src/helpers/number-helper";
+import crypto from "crypto";
+import Randomstring from "randomstring";
 
 const chance = new Chance();
 
@@ -11,6 +13,21 @@ const generateClientSeed = (length = 4, pool = "0123456789") => {
 
 const generateClientSeeds = () => {
     return [generateClientSeed(), generateClientSeed(), generateClientSeed(), generateClientSeed(), generateClientSeed()];
+};
+
+// Generate server seed (simplified version using randomstring)
+const generateServerSeed = (length = 40) => {
+    return Randomstring.generate({ length });
+};
+
+// Generate final seeds using the same logic as round-result-consumer
+const generateFinalSeeds = (serverSeed, clientSeeds) => {
+    // Merge client seeds (array of strings) into a single string
+    const mergeClientSeed = clientSeeds.join("");
+    const mergeSeed = serverSeed + mergeClientSeed;
+    const finalHash = crypto.createHash("sha512").update(mergeSeed).digest("hex");
+
+    return { clientSeeds, mergeClientSeed, mergeSeed, finalHash };
 };
 
 const exportRtpResult = (randomMode = 1, crashAtBase = 3, { minPoint, maxPoint }, numberOfRuns = 1_000_000) => {
@@ -26,8 +43,9 @@ const exportRtpResult = (randomMode = 1, crashAtBase = 3, { minPoint, maxPoint }
         const cashOutPoint = chance.floating({ min: minPoint, max: maxPoint });
 
         const clientSeeds = generateClientSeeds();
-        const serverSeed = generateResult();
-        const crashPoint = getFinalResult(serverSeed, clientSeeds);
+        const serverSeed = generateServerSeed();
+        const finalSeeds = generateFinalSeeds(serverSeed, clientSeeds);
+        const crashPoint = generateResult(finalSeeds.finalHash);
         const range = Math.round(crashPoint);
         crashPointRange[range] ? crashPointRange[range]++ : (crashPointRange[range] = 1);
         totalBetAmount += betAmount;
