@@ -25,6 +25,7 @@ describe("PlaceBetConsumer", () => {
         amount: chance.natural(),
         freeBet: chance.bool(),
         roundId: chance.natural({ min: 1 }),
+        betKey: 1,
         autoCashOut: 3.4,
         action: Actions.bet,
         clientSeed: "999",
@@ -45,6 +46,10 @@ describe("PlaceBetConsumer", () => {
         roundId: 1,
         remainingTime: 30,
     };
+
+    /**
+     * @type {PlaceBetConsumer}
+     */
 
     let consumer;
 
@@ -84,7 +89,7 @@ describe("PlaceBetConsumer", () => {
                 const expectedValue = { failure: true, notice: { errorCode: helpers.noticeHelper.minBet, minBet: 6 } };
 
                 // Act
-                const actualValue = consumer.composeBetAmountValidationCriteria(player, amount, false, 1);
+                const actualValue = consumer.composeBetAmountValidationCriteria(player, amount, 1, false, 1);
 
                 // Assert
                 expect(actualValue[2]).toStrictEqual(expectedValue);
@@ -98,7 +103,7 @@ describe("PlaceBetConsumer", () => {
                 const expectedValue = { failure: true, notice: { errorCode: helpers.noticeHelper.maxBet, maxBet: 8 } };
 
                 // Act
-                const actualValue = consumer.composeBetAmountValidationCriteria(player, amount, false, 1);
+                const actualValue = consumer.composeBetAmountValidationCriteria(player, amount, 1, false, 1);
 
                 // Assert
                 expect(actualValue[3]).toStrictEqual(expectedValue);
@@ -113,7 +118,7 @@ describe("PlaceBetConsumer", () => {
                 const expectedValue = { failure: true, notice: { errorCode: noticeHelper.invalidValueCashOut, autoCashOut: autoCashOut } };
 
                 // Act
-                const actualValue = consumer.composeBetAmountValidationCriteria(player, amount, false, autoCashOut);
+                const actualValue = consumer.composeBetAmountValidationCriteria(player, amount, 1, false, autoCashOut);
 
                 // Assert
                 expect(actualValue[4]).toStrictEqual(expectedValue);
@@ -128,7 +133,7 @@ describe("PlaceBetConsumer", () => {
                 const expectedValue = { failure: true, notice: { errorCode: noticeHelper.invalidValueCashOut, autoCashOut: autoCashOut } };
 
                 // Act
-                const actualValue = consumer.composeBetAmountValidationCriteria(player, amount, false, autoCashOut);
+                const actualValue = consumer.composeBetAmountValidationCriteria(player, amount, 1, false, autoCashOut);
 
                 // Assert
                 expect(actualValue[4]).toStrictEqual(expectedValue);
@@ -145,7 +150,7 @@ describe("PlaceBetConsumer", () => {
                 const amount = 3;
 
                 // Act
-                const actualValue = consumer.validateBetRequest(player, amount, false, 1);
+                const actualValue = consumer.validateBetRequest(player, amount, 1, false, 1);
 
                 // Assert
                 expect(actualValue).toBeFalsy();
@@ -160,7 +165,7 @@ describe("PlaceBetConsumer", () => {
                 const amount = 3;
                 const autoCashOut = 2;
                 // Act
-                const actualValue = consumer.validateBetRequest(player, amount, false, 2, autoCashOut);
+                const actualValue = consumer.validateBetRequest(player, amount, 1, false, 2, autoCashOut);
 
                 // Assert
                 expect(actualValue).toBeTruthy();
@@ -180,7 +185,7 @@ describe("PlaceBetConsumer", () => {
             consumer.consume(player, payload);
 
             // Assert
-            expect(consumer.validateRequestParams).toBeCalledWith(payload, player);
+            expect(consumer.validateRequestParams).toHaveBeenCalledWith(payload, player);
         });
 
         describe("when requestParams is NOT valid", () => {
@@ -193,7 +198,7 @@ describe("PlaceBetConsumer", () => {
                 consumer.consume(player, payload);
 
                 // Assert
-                expect(consumer.validateBetRequest).not.toBeCalled();
+                expect(consumer.validateBetRequest).not.toHaveBeenCalled();
             });
 
             it("should NOT call adjustBetTracks", () => {
@@ -201,7 +206,7 @@ describe("PlaceBetConsumer", () => {
                 consumer.consume(player, payload);
 
                 // Assert
-                expect(consumer.adjustBetTracks).not.toBeCalled();
+                expect(consumer.adjustBetTracks).not.toHaveBeenCalled();
             });
 
             it("should NOT push bet to bet queue", () => {
@@ -218,14 +223,34 @@ describe("PlaceBetConsumer", () => {
                 consumer.validateRequestParams.mockReturnValueOnce(true);
             });
 
+            //when payload amount is greater than 0 and less than 1
+
+            describe("and payload amount is greater than 0 and less than 1", () => {
+                it.each([0.05, 0.1])("should call validateBetRequest with amount %s", (amount) => {
+                    // Act
+                    consumer.consume(player, { ...payload, amount });
+
+                    // Assert
+                    expect(consumer.validateBetRequest).toHaveBeenCalledWith(
+                        player,
+                        amount,
+                        payload.betKey,
+                        payload.freeBet,
+                        payload.roundId,
+                        payload.autoCashOut
+                    );
+                });
+            });
+
             it("should call validateBetRequest", () => {
                 // Act
                 consumer.consume(player, payload);
 
                 // Assert
-                expect(consumer.validateBetRequest).toBeCalledWith(
+                expect(consumer.validateBetRequest).toHaveBeenCalledWith(
                     player,
                     payload.amount,
+                    payload.betKey,
                     payload.freeBet,
                     payload.roundId,
                     payload.autoCashOut
@@ -242,7 +267,7 @@ describe("PlaceBetConsumer", () => {
                     consumer.consume(player, payload);
 
                     // Assert
-                    expect(consumer.adjustBetTracks).not.toBeCalled();
+                    expect(consumer.adjustBetTracks).not.toHaveBeenCalled();
                 });
 
                 it("should NOT push bet to bet queue", () => {
@@ -264,7 +289,7 @@ describe("PlaceBetConsumer", () => {
                     consumer.consume(player, payload);
 
                     // Assert
-                    expect(consumer.adjustBetTracks).toBeCalledWith(player.profile.name, payload);
+                    expect(consumer.adjustBetTracks).toHaveBeenCalledWith(player.profile.name, payload);
                 });
 
                 it("should push bet to bet queue", () => {
@@ -297,14 +322,21 @@ describe("PlaceBetConsumer", () => {
         describe("when having player info on ingame data", () => {
             it("should update player betTracks", () => {
                 // Arrange
-                gameData.ingame[player.profile.name] = { betTracks: {} };
+                gameData.ingame[player.profile.name] = {
+                    betTracks: {
+                        0: {},
+                        1: {},
+                    },
+                };
 
                 // Act
                 consumer.adjustBetTracks(player.profile.name, payload);
 
                 // Assert
-                expect(gameData.ingame[player.profile.name].betTracks[payload.action].amount).toStrictEqual(payload.amount);
-                expect(gameData.ingame[player.profile.name].betTracks[payload.action].autoCashOut).toStrictEqual(payload.autoCashOut);
+                expect(gameData.ingame[player.profile.name].betTracks[payload.betKey][payload.action].amount).toStrictEqual(payload.amount);
+                expect(gameData.ingame[player.profile.name].betTracks[payload.betKey][payload.action].autoCashOut).toStrictEqual(
+                    payload.autoCashOut
+                );
             });
         });
     });

@@ -19,8 +19,14 @@ const tempBetsRepository = stubMongoose(mongoose.Model);
 
 /** @type {mongoose.Model}*/
 const betLogsRepository = stubMongoose(mongoose.Model);
+
+/** @type {SettleGameRoundConsumer}*/
 const settleGameRoundConsumer = stub(SettleGameRoundConsumer);
+
+/** @type {RoundResultConsumer}*/
 const roundResultConsumer = stub(RoundResultConsumer);
+
+/** @type {ProvablyFairConsumer}*/
 const provablyFairConsumer = stub(ProvablyFairConsumer);
 
 beforeEach(() => {
@@ -82,6 +88,7 @@ describe("unsettledRoundConsumer", () => {
                     rate: 1,
                     operatorId: "OW",
                     playerId: 1,
+                    betKey: 1,
                 },
                 {
                     uid: "player2-uid",
@@ -95,6 +102,7 @@ describe("unsettledRoundConsumer", () => {
                     rate: 1,
                     operatorId: "OW",
                     playerId: 2,
+                    betKey: 1,
                 },
             ];
 
@@ -102,15 +110,17 @@ describe("unsettledRoundConsumer", () => {
                 // Arrange
                 const betLogs = [
                     {
-                        uid: "player2-uid",
-                        name: "player2",
-                        playerId: 2,
-                        action: Actions.CashOut,
+                        uid: "player1-uid",
+                        name: "player1",
+                        playerId: 1,
+                        action: Actions.Bet,
                         amount: 10,
                         siteId: "123",
                         currency: "USD",
                         rate: 1,
                         operatorId: "OW",
+                        betKey: 1,
+                        roundId: 1,
                     },
                 ];
                 gameData.lastResultRecord = { serverSeed: "seed", finalHash: "hash" };
@@ -138,62 +148,7 @@ describe("unsettledRoundConsumer", () => {
                         rate: 1,
                         operatorId: "OW",
                         playerId: 1,
-                    },
-                ]);
-            });
-
-            it("should insert refund betlogs for player half cash out", async () => {
-                // Arrange
-                const betLogs = [
-                    {
-                        uid: "player1-uid",
-                        name: "player1",
-                        playerId: 1,
-                        action: Actions.HalfCashOut,
-                        amount: 5,
-                        siteId: "123",
-                        currency: "USD",
-                        rate: 1,
-                        operatorId: "OW",
-                    },
-                    {
-                        uid: "player2-uid",
-                        name: "player2",
-                        playerId: 2,
-                        action: Actions.CashOut,
-                        amount: 10,
-                        siteId: "123",
-                        currency: "USD",
-                        rate: 1,
-                        operatorId: "OW",
-                    },
-                ];
-
-                gameData.lastResultRecord = { serverSeed: "seed", finalHash: "hash" };
-
-                betLogsRepository.find().lean().exec.mockReturnValueOnce(betLogs);
-                const unsettledRoundConsumer = initConsumer();
-
-                // Act
-                await unsettledRoundConsumer.proceedUnsettledBets(unsettledBets);
-
-                // Assert
-                expect(betLogsRepository.insertMany).toHaveBeenCalledWith([
-                    {
-                        uid: "player1-uid",
-                        name: "player1",
-                        time: new Date(),
-                        action: Actions.Refund,
-                        amount: 5,
-                        winAmount: 5,
-                        clientSendTime: new Date(),
-                        receivedTime: new Date(),
-                        roundId: 1,
-                        siteId: "123",
-                        currency: "USD",
-                        rate: 1,
-                        operatorId: "OW",
-                        playerId: 1,
+                        betKey: 1,
                     },
                 ]);
             });

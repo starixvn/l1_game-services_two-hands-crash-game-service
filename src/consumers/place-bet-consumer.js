@@ -7,7 +7,7 @@ import { roundFloat } from "../helpers/number-helper";
 export class PlaceBetConsumer extends BaseEventConsumers.PlaceBetConsumer {
     consume(player, payload) {
         Object.assign(payload, {
-            amount: payload.amount >> 0,
+            amount: +payload.amount,
             autoCashOut: roundFloat(payload.autoCashOut ?? 0),
             freeBet: payload.freeBet ?? false,
             roundId: payload.roundId ?? this.gameData.roundId,

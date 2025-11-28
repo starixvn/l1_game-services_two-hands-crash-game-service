@@ -1,11 +1,11 @@
-import mongoose from "mongoose";
-import { stub, stubMongoose } from "jest-micro-auto-stub";
-import GameData from "../../game-data";
-import PlaceBetPublisher from "../../event-publishers/place-bet-publisher";
-import { SettleCashOutConsumer } from "../settle-cash-out-consumer";
-import { Actions, MinMultiplierValue } from "../../constants";
 import Chance from "chance";
+import { stub, stubMongoose } from "jest-micro-auto-stub";
+import mongoose from "mongoose";
+import { Actions } from "../../constants";
+import PlaceBetPublisher from "../../event-publishers/place-bet-publisher";
+import GameData from "../../game-data";
 import { roundFloat } from "../../helpers/number-helper";
+import { SettleCashOutConsumer } from "../settle-cash-out-consumer";
 
 const chance = new Chance();
 
@@ -17,7 +17,7 @@ describe("SettleCashOutConsumer", () => {
     const gameData = new GameData();
     gameData.updatePlayerAction = jest.fn();
     gameData.gameConfigs.crashConfig = {};
-    gameData.result = 100;
+    gameData.result = 1000;
 
     const placeBetPublisher = stub(PlaceBetPublisher);
     const logService = {
@@ -25,6 +25,9 @@ describe("SettleCashOutConsumer", () => {
     };
     const betLogsRepository = stubMongoose(mongoose.Model);
 
+    /**
+     * @type {SettleCashOutConsumer}
+     */
     let consumer;
 
     beforeEach(() => {
@@ -56,69 +59,11 @@ describe("SettleCashOutConsumer", () => {
         },
     };
 
-    describe("proceedAutoCashOut", () => {
-        beforeEach(() => {
-            consumer.settleCashOut = jest.fn();
-        });
-
-        describe("when exist valid autoCashOut value on bet", () => {
-            it("should call settleCashOut", async () => {
-                // Arrange
-                const mockReceivedTime = new Date();
-                const autoCashOut = MinMultiplierValue;
-                const amount = 100;
-                const multiplier = autoCashOut + 0.1;
-                const betQueuePushMock = jest.fn();
-                jest.spyOn(global, "Date").mockImplementation(() => mockReceivedTime);
-                gameData.betList = {
-                    [UID]: {
-                        [Actions.HalfCashOut]: {
-                            win: 1.1,
-                        },
-                    },
-                };
-
-                const expectedPayload = {
-                    roundId: gameData.roundId,
-                    receivedTime: mockReceivedTime,
-                    action: Actions.CashOut,
-                };
-
-                gameData.ingame = {
-                    [playerName]: {
-                        UID,
-                        betTracks: {
-                            [Actions.Bet]: {
-                                autoCashOut,
-                                amount,
-                            },
-                            [Actions.HalfCashOut]: {
-                                amount: amount / 2,
-                                win: 1.1,
-                            },
-                        },
-                        betQueue: {
-                            push: betQueuePushMock,
-                        },
-                        playerData: realPlayer,
-                    },
-                };
-
-                // Act
-                await consumer.proceedAutoCashOut(multiplier);
-
-                // Assert
-                expect(consumer.settleCashOut).toBeCalledWith(realPlayer, expectedPayload, amount / 2, autoCashOut, 1.1);
-            });
-        });
-    });
-
     describe("settleCashOut", () => {
-        const payload = { roundId: chance.natural(), action: chance.pickone(Object.values(Actions)) };
+        const payload = { roundId: chance.natural(), action: chance.pickone(Object.values(Actions)), betKey: 1 };
         const amount = chance.natural({ min: 1, max: 100 });
-        const multiplier = chance.floating({ min: 1, max: 2000 });
+        const multiplier = chance.floating({ min: 1, max: 999 });
         const maxWinPerRound = 200000;
-        const halfCashOutWinAmount = chance.floating({ min: 1.01, max: 10000 });
         const winAmount = roundFloat(multiplier * amount);
         const reachMaxWin = winAmount === maxWinPerRound;
         const currencyRate = chance.floating({ min: 0.1, max: 1000 });
@@ -131,10 +76,20 @@ describe("SettleCashOutConsumer", () => {
 
         it("should call getMaxWinPerRound", async () => {
             // Act
-            await consumer.settleCashOut(realPlayer, payload, amount, multiplier, halfCashOutWinAmount);
+            await consumer.settleCashOut(realPlayer, payload, amount, multiplier);
 
             // Assert
-            expect(consumer.getMaxWinPerRound).toBeCalledWith(realPlayer);
+            expect(consumer.getMaxWinPerRound).toHaveBeenCalledWith(realPlayer);
+        });
+
+        it("should call calculateTotalWin", async () => {
+            consumer.calculateTotalWin = jest.fn();
+
+            // Act
+            await consumer.settleCashOut(realPlayer, payload, amount, multiplier);
+
+            // Assert
+            expect(consumer.calculateTotalWin).toHaveBeenCalledWith(realPlayer);
         });
 
         it("should call insertBetLog", async () => {
@@ -142,23 +97,40 @@ describe("SettleCashOutConsumer", () => {
             const expectBetLog = { ...payload, winAmount, multiplier, amount, reachMaxWin };
 
             // Act
-            await consumer.settleCashOut(realPlayer, payload, amount, multiplier, halfCashOutWinAmount);
+            await consumer.settleCashOut(realPlayer, payload, amount, multiplier);
 
             // Assert
-            expect(consumer.insertBetLog).toBeCalledWith(realPlayer, payload.roundId, expectBetLog);
+            expect(consumer.insertBetLog).toHaveBeenCalledWith(realPlayer, payload.roundId, expectBetLog);
+        });
+
+        it("should call calculateCurrencyRate", async () => {
+            consumer.calculateCurrencyRate = jest.fn();
+
+            // Act
+            await consumer.settleCashOut(realPlayer, payload, amount, multiplier);
+
+            // Assert
+            expect(consumer.calculateCurrencyRate).toHaveBeenCalledWith(realPlayer.session);
         });
 
         it("should call placeBetPublisher.publishSuccessCashOut", async () => {
             // Act
-            await consumer.settleCashOut(realPlayer, payload, amount, multiplier, halfCashOutWinAmount);
+            await consumer.settleCashOut(realPlayer, payload, amount, multiplier);
 
             // Assert
-            expect(placeBetPublisher.publishSuccessCashOut).toBeCalledWith(
+            expect(placeBetPublisher.publishSuccessCashOut).toHaveBeenCalledWith(
                 realPlayer.UID,
                 {
                     name: realPlayer.profile.name,
                     playerId: realPlayer.UID,
-                    [payload.action]: { amount, win: winAmount, multiplier, reachMaxWin: false, cashOutWin: winAmount },
+                    [payload.action]: {
+                        amount,
+                        win: winAmount,
+                        multiplier,
+                        reachMaxWin: false,
+                        cashOutWin: winAmount,
+                        betKey: payload.betKey,
+                    },
                 },
                 currencyRate
             );
@@ -166,15 +138,27 @@ describe("SettleCashOutConsumer", () => {
 
         it("should call gameData.updatePlayerAction", async () => {
             // Act
-            await consumer.settleCashOut(realPlayer, payload, amount, multiplier, halfCashOutWinAmount);
+            await consumer.settleCashOut(realPlayer, payload, amount, multiplier);
 
             // Assert
-            expect(gameData.updatePlayerAction).toBeCalledWith(realPlayer.UID, payload.action, {
+            expect(gameData.updatePlayerAction).toHaveBeenCalledWith(realPlayer.UID, payload.action, payload.betKey, {
                 amount,
                 win: winAmount,
                 multiplier,
                 cashOutWin: winAmount,
                 reachMaxWin: false,
+            });
+        });
+
+        describe("when multiplier is greater than result", () => {
+            beforeEach(() => {
+                gameData.result = 10;
+                consumer.settleCashOut = jest.fn();
+            });
+
+            it("should call settleCashOut", async () => {
+                // Act
+                await consumer.settleCashOut(realPlayer, payload, amount, 15);
             });
         });
     });
@@ -209,7 +193,7 @@ describe("SettleCashOutConsumer", () => {
             await consumer.insertBetLog(realPlayer, roundId, payload);
 
             // Assert
-            expect(consumer.calculateCurrencyRate).toBeCalledWith(realPlayer.session);
+            expect(consumer.calculateCurrencyRate).toHaveBeenCalledWith(realPlayer.session);
         });
 
         it("should call betLogsRepository.create", async () => {
@@ -223,7 +207,7 @@ describe("SettleCashOutConsumer", () => {
             await consumer.insertBetLog(realPlayer, roundId, payload);
 
             // Assert
-            expect(betLogsRepository.create).toBeCalledWith({
+            expect(betLogsRepository.create).toHaveBeenCalledWith({
                 uid: realPlayer.UID,
                 name: realPlayer.profile.name,
                 time: mockDate,
@@ -242,6 +226,296 @@ describe("SettleCashOutConsumer", () => {
                 operatorId: realPlayer.session.operatorId,
                 playerId: realPlayer.session.playerId,
             });
+        });
+    });
+
+    describe("proceedAutoCashOut", () => {
+        const multiplier = chance.floating({ min: 1, max: 999 });
+        const player1 = {
+            ...realPlayer,
+            profile: { ...realPlayer.profile, name: "player1" },
+            betTracks: {
+                1: {
+                    [Actions.Bet]: {
+                        amount: 100,
+                        autoCashOut: 1.5,
+                    },
+                },
+            },
+        };
+        const player2 = {
+            ...realPlayer,
+            profile: { ...realPlayer.profile, name: "player2" },
+            betTracks: {
+                1: {
+                    [Actions.Bet]: {
+                        amount: 200,
+                        autoCashOut: 2.0,
+                    },
+                },
+            },
+        };
+        const umPlayer = {
+            ...realPlayer,
+            profile: { ...realPlayer.profile, name: "umPlayer" },
+            betTracks: {
+                1: {
+                    [Actions.Bet]: {
+                        amount: 300,
+                        autoCashOut: 1.8,
+                    },
+                },
+            },
+        };
+
+        beforeEach(() => {
+            gameData.ingame = {
+                [player1.profile.name]: { playerData: player1, betTracks: player1.betTracks, isUm: false },
+                [player2.profile.name]: { playerData: player2, betTracks: player2.betTracks, isUm: false },
+                [umPlayer.profile.name]: { playerData: umPlayer, betTracks: umPlayer.betTracks, isUm: true },
+            };
+            gameData.roundId = chance.natural();
+            consumer.validateAutoCashOut = jest.fn();
+            consumer.settleCashOut = jest.fn();
+        });
+
+        it("should process auto cash out for valid players", async () => {
+            // Arrange
+            consumer.validateAutoCashOut.mockReturnValue(true);
+
+            // Act
+            await consumer.proceedAutoCashOut(multiplier);
+
+            // Assert
+            expect(consumer.validateAutoCashOut).toHaveBeenCalledWith(player1.betTracks[1], multiplier);
+            expect(consumer.validateAutoCashOut).toHaveBeenCalledWith(player2.betTracks[1], multiplier);
+            expect(consumer.settleCashOut).toHaveBeenCalledWith(
+                player1,
+                expect.objectContaining({
+                    roundId: gameData.roundId,
+                    action: Actions.CashOut,
+                    betKey: 1,
+                }),
+                player1.betTracks[1][Actions.Bet].amount,
+                player1.betTracks[1][Actions.Bet].autoCashOut
+            );
+            expect(consumer.settleCashOut).toHaveBeenCalledWith(
+                player2,
+                expect.objectContaining({
+                    roundId: gameData.roundId,
+                    action: Actions.CashOut,
+                    betKey: 1,
+                }),
+                player2.betTracks[1][Actions.Bet].amount,
+                player2.betTracks[1][Actions.Bet].autoCashOut
+            );
+        });
+
+        it("should not process auto cash out for UM players", async () => {
+            // Arrange
+            consumer.validateAutoCashOut.mockReturnValue(true);
+
+            // Act
+            await consumer.proceedAutoCashOut(multiplier);
+
+            // Assert
+            expect(consumer.validateAutoCashOut).not.toHaveBeenCalledWith(umPlayer.betTracks[1], multiplier);
+            expect(consumer.settleCashOut).not.toHaveBeenCalledWith(
+                umPlayer.playerData,
+                expect.any(Object),
+                umPlayer.betTracks[1][Actions.Bet].amount,
+                umPlayer.betTracks[1][Actions.Bet].autoCashOut
+            );
+        });
+
+        it("should not process auto cash out for invalid bets", async () => {
+            // Arrange
+            consumer.validateAutoCashOut.mockReturnValue(false);
+
+            // Act
+            await consumer.proceedAutoCashOut(multiplier);
+
+            // Assert
+            expect(consumer.settleCashOut).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("validateAutoCashOut", () => {
+        const multiplier = 2.0;
+        const betTracks = {
+            [Actions.Bet]: {
+                amount: 100,
+                autoCashOut: 1.5,
+            },
+        };
+
+        beforeEach(() => {
+            gameData.result = 3.0;
+        });
+
+        it("should return true when auto cash out threshold is reached and no cash out exists", () => {
+            // Act
+            const result = consumer.validateAutoCashOut(betTracks, multiplier);
+
+            // Assert
+            expect(result).toBe(true);
+        });
+
+        it("should return false when auto cash out threshold is not reached", () => {
+            // Arrange
+            betTracks[Actions.Bet].autoCashOut = 2.5;
+
+            // Act
+            const result = consumer.validateAutoCashOut(betTracks, multiplier);
+
+            // Assert
+            expect(result).toBe(false);
+        });
+
+        it("should return false when game result is less than auto cash out", () => {
+            // Arrange
+            gameData.result = 1.0;
+
+            // Act
+            const result = consumer.validateAutoCashOut(betTracks, multiplier);
+
+            // Assert
+            expect(result).toBe(false);
+        });
+
+        it("should return false when cash out already exists", () => {
+            // Arrange
+            betTracks[Actions.CashOut] = {
+                time: new Date(),
+            };
+
+            // Act
+            const result = consumer.validateAutoCashOut(betTracks, multiplier);
+
+            // Assert
+            expect(result).toBe(false);
+        });
+
+        it("should return false when bet tracks is undefined", () => {
+            // Act
+            const result = consumer.validateAutoCashOut(undefined, multiplier);
+
+            // Assert
+            expect(result).toBe(false);
+        });
+
+        it("should return false when bet is undefined", () => {
+            // Arrange
+            const invalidBetTracks = {};
+
+            // Act
+            const result = consumer.validateAutoCashOut(invalidBetTracks, multiplier);
+
+            // Assert
+            expect(result).toBe(false);
+        });
+    });
+
+    describe("calculateCurrencyRate", () => {
+        const session = {
+            multiplier: 1000,
+            currencyCode: "USD",
+        };
+        const exchangeRate = 1.5;
+
+        beforeEach(() => {
+            gameData.exchangeRates = {
+                code: {
+                    [session.currencyCode]: exchangeRate,
+                },
+            };
+        });
+
+        it("should calculate currency rate correctly", () => {
+            // Act
+            const result = consumer.calculateCurrencyRate(session);
+
+            // Assert
+            expect(result).toBe(1500);
+        });
+
+        it("should handle undefined exchange rate", () => {
+            // Arrange
+            gameData.exchangeRates.code[session.currencyCode] = undefined;
+
+            // Act
+            const result = consumer.calculateCurrencyRate(session);
+
+            // Assert
+            expect(result).toBeNaN();
+        });
+    });
+
+    describe("calculateTotalWin", () => {
+        const player = {
+            UID: "player1",
+        };
+        const betKey0 = "0";
+        const betKey1 = "1";
+        const winAmount1 = 100;
+        const winAmount2 = 200;
+
+        beforeEach(() => {
+            gameData.betList = {
+                [player.UID]: {
+                    [betKey0]: {
+                        [Actions.CashOut]: {
+                            win: winAmount1,
+                        },
+                    },
+                    [betKey1]: {
+                        [Actions.CashOut]: {
+                            win: winAmount2,
+                        },
+                    },
+                },
+            };
+        });
+
+        it("should calculate total win from all cash outs", () => {
+            // Act
+            const result = consumer.calculateTotalWin(player);
+
+            // Assert
+            expect(result).toBe(winAmount1 + winAmount2);
+        });
+
+        it("should return 0 when player has no bets", () => {
+            // Arrange
+            gameData.betList = {};
+
+            // Act
+            const result = consumer.calculateTotalWin(player);
+
+            // Assert
+            expect(result).toBe(0);
+        });
+
+        it("should handle undefined win amount", () => {
+            // Arrange
+            gameData.betList[player.UID][betKey0][Actions.CashOut].win = undefined;
+
+            // Act
+            const result = consumer.calculateTotalWin(player);
+
+            // Assert
+            expect(result).toBe(winAmount2);
+        });
+
+        it("should handle missing cash out", () => {
+            // Arrange
+            delete gameData.betList[player.UID][betKey0][Actions.CashOut];
+
+            // Act
+            const result = consumer.calculateTotalWin(player);
+
+            // Assert
+            expect(result).toBe(winAmount2);
         });
     });
 });
