@@ -305,7 +305,7 @@ describe("SettleGameRoundConsumer", () => {
 
             it("should return Bet Result with netWin is greater than 0", () => {
                 // Act
-                const expectResult = +(winAmount - betAmount).toFixed(2);
+                const expectResult = +(winAmount - betAmount).toFixed(4);
                 const { netWin } = consumer.calculateBetResult({ totalAmount: betAmount }, betLogs);
 
                 // Assert
@@ -340,7 +340,7 @@ describe("SettleGameRoundConsumer", () => {
 
             it("should return Bet Result with totalLost is greater than 0", () => {
                 // Act
-                const expectedResult = +(betAmount - winAmount).toFixed(2);
+                const expectedResult = +(betAmount - winAmount).toFixed(4);
                 const { totalLost } = consumer.calculateBetResult({ totalAmount: betAmount }, betLogs);
 
                 // Assert

@@ -64,7 +64,7 @@ describe("SettleCashOutConsumer", () => {
         const amount = chance.natural({ min: 1, max: 100 });
         const multiplier = chance.floating({ min: 1, max: 999 });
         const maxWinPerRound = 200000;
-        const winAmount = roundFloat(multiplier * amount);
+        const winAmount = roundFloat(multiplier * amount, 4);
         const reachMaxWin = winAmount === maxWinPerRound;
         const currencyRate = chance.floating({ min: 0.1, max: 1000 });
 
@@ -148,6 +148,36 @@ describe("SettleCashOutConsumer", () => {
                 cashOutWin: winAmount,
                 reachMaxWin: false,
             });
+        });
+
+        it("should calculate cashOutWin correctly with amount 0.05 and multiplier 1.66", async () => {
+            // Arrange
+            const testAmount = 0.05;
+            const testMultiplier = 1.61;
+            const expectedCashOutWin = 0.0805;
+            consumer.calculateTotalWin = jest.fn().mockReturnValue(0);
+
+            // Act
+            await consumer.settleCashOut(realPlayer, payload, testAmount, testMultiplier);
+
+            // Assert
+            expect(placeBetPublisher.publishSuccessCashOut).toHaveBeenCalledWith(
+                realPlayer.UID,
+                expect.objectContaining({
+                    [payload.action]: expect.objectContaining({
+                        cashOutWin: expectedCashOutWin,
+                    }),
+                }),
+                expect.any(Number)
+            );
+            expect(gameData.updatePlayerAction).toHaveBeenCalledWith(
+                realPlayer.UID,
+                payload.action,
+                payload.betKey,
+                expect.objectContaining({
+                    cashOutWin: expectedCashOutWin,
+                })
+            );
         });
 
         describe("when multiplier is greater than result", () => {

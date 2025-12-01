@@ -60,7 +60,7 @@ export class SettleCashOutConsumer {
         try {
             if (multiplier < this.gameData.result) {
                 const { action, roundId, betKey } = payload;
-                const cashOutWin = roundFloat(amount * multiplier);
+                const cashOutWin = roundFloat(amount * multiplier , 4);
                 const maxWinPerRound = this.getMaxWinPerRound(player);
                 const currentWin = this.calculateTotalWin(player);
                 const winAmount = Math.min(cashOutWin, maxWinPerRound - currentWin);

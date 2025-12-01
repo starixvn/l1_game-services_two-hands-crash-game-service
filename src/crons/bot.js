@@ -65,7 +65,7 @@ export default class Bot extends Table.Crons.TableGameBot {
         const weights = this.cashOutDistributions.map((setting) => setting.ratio);
         const cashOutStrategy = this.chance.weighted(this.cashOutDistributions, weights);
 
-        return roundFloat(this.chance.floating({ min: cashOutStrategy.from, max: cashOutStrategy.to }));
+        return roundFloat(this.chance.floating({ min: cashOutStrategy.from, max: cashOutStrategy.to }), 4);
     }
 
     getRemovalBotIds(totalRemoval) {
@@ -134,7 +134,7 @@ export default class Bot extends Table.Crons.TableGameBot {
                     const multiplier = calculateMultiplier(new Date() - startTime);
 
                     if (multiplier < result) {
-                        const winAmount = roundFloat(amount * multiplier);
+                        const winAmount = roundFloat(amount * multiplier, 4);
 
                         this.publisher.publishToAllUsersExceptSystem(Constants.Systems.Mobi, null, {
                             otherPlayer: {
